@@ -199,63 +199,101 @@ async function checkNodesExistence(nodeIds: string[]) {
 }
 
 async function editMessage(messageId: string, message: string) {
-
   const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
   const currentTab = tabs[0];
 
   await chrome.scripting.executeScript({
     target: { tabId: currentTab.id ?? 0 },
     func: (messageId, message) => {
-      // find the message id and scroll to it
-      const element = document.querySelector(`[data-message-id="${messageId}"]`);
-      if (element) {
-        const buttonDiv = element.parentElement?.parentElement;
-        if (buttonDiv) {
-          setTimeout(() => {
-            const buttons = buttonDiv.querySelectorAll("button");
-            const buttonIndex = Array.from(buttons).findIndex(button => button.getAttribute('aria-label') === "Edit message");
-            if (buttonIndex !== -1) {
-              buttons[buttonIndex].click();
-            } else {
-              throw new Error(`Button with required aria-label not found`);
+      // Helper function to wait for DOM changes
+      const waitForDomChange = (element: Element, timeout = 2000): Promise<void> => {
+        return new Promise((resolve, reject) => {
+          const timeoutId = setTimeout(() => {
+            observer.disconnect();
+            reject(new Error('Timeout waiting for DOM changes'));
+          }, timeout);
+
+          const observer = new MutationObserver((mutations) => {
+            if (mutations.length > 0) {
+              clearTimeout(timeoutId);
+              observer.disconnect();
+              // Give a small buffer for the DOM to settle
+              setTimeout(resolve, 50);
             }
+          });
 
-            setTimeout(() => {
-              const textArea = buttonDiv.querySelector("textarea");
-              if (textArea) {
-                textArea.value = message;
-                textArea.dispatchEvent(new Event('input', { bubbles: true }));
-              }
-              element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          observer.observe(element, {
+            childList: true,
+            subtree: true,
+            attributes: true,
+            characterData: true
+          });
+        });
+      };
 
-              // since we have edited the message in place now, we only have to click on the "send" button and then force an update
+      // Convert the callback hell into async/await
+      const performEdit = async () => {
+        const element = document.querySelector(`[data-message-id="${messageId}"]`);
+        if (!element) throw new Error('Message element not found');
 
-              let currentElement: Element | null = textArea;
-              let sendButton: HTMLButtonElement | null = null;
-              let iterations = 0;
-              
-              while (currentElement && iterations < 10) {
-                const buttons = currentElement.querySelectorAll('button');
-                sendButton = Array.from(buttons).find(button => button.textContent?.trim() === 'Send') as HTMLButtonElement || null;
-                if (sendButton) break;
-                
-                currentElement = currentElement.parentElement;
-                iterations++;
-              }
-              
-              setTimeout(() => {
-                if (sendButton) {
-                  sendButton.click();
-                }
-              }, 1000);
-              if (sendButton) {
-                sendButton.click();
-              }
-            }, 100);
-          }, 100);
+        const buttonDiv = element.parentElement?.parentElement;
+        if (!buttonDiv) throw new Error('Button container not found');
 
+        // Click edit button
+        const buttons = buttonDiv.querySelectorAll("button");
+        const editButton = Array.from(buttons).find(button => 
+          button.getAttribute('aria-label') === "Edit message"
+        );
+        if (!editButton) throw new Error('Edit button not found');
+        
+        editButton.click();
+        await waitForDomChange(buttonDiv);
+
+        // Set textarea value
+        let textArea = buttonDiv.querySelector("textarea");
+        let attempts = 0;
+        const maxAttempts = 5;
+        
+        while (!textArea && attempts < maxAttempts) {
+          await new Promise(resolve => setTimeout(resolve, 100));
+          textArea = buttonDiv.querySelector("textarea");
+          attempts++;
         }
-      }
+        
+        if (!textArea) throw new Error('Textarea not found after multiple attempts');
+        
+        textArea.value = message;
+        textArea.dispatchEvent(new Event('input', { bubbles: true }));
+        element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+
+        // Find and click send button
+        let currentElement: Element | null = textArea;
+        let sendButton: HTMLButtonElement | null = null;
+        let iterations = 0;
+        
+        while (currentElement && iterations < 10) {
+          const buttons = currentElement.querySelectorAll('button');
+          sendButton = Array.from(buttons).find(
+            button => button.textContent?.trim() === 'Send'
+          ) as HTMLButtonElement || null;
+          if (sendButton) break;
+          
+          currentElement = currentElement.parentElement;
+          iterations++;
+        }
+
+        if (!sendButton) throw new Error('Send button not found');
+        sendButton.click();
+        
+        // Wait for final update after sending
+        await waitForDomChange(buttonDiv, 2000);
+      };
+
+      // Execute the async function and handle errors
+      return performEdit().catch(error => {
+        console.error('Error in editMessage:', error);
+        throw error;
+      });
     },
     args: [messageId, message]
   });
@@ -268,68 +306,99 @@ async function respondToMessage(childrenIds: string[], message: string) {
 
   await chrome.scripting.executeScript({
     target: { tabId: currentTab.id ?? 0 },
-    func: (childrenIds: string[], message: string) => {
-      let element = null;
+    func: (childrenIds, message: string) => {
+      // Helper function to wait for DOM changes
+      const waitForDomChange = (element: Element, timeout = 2000): Promise<void> => {
+        return new Promise((resolve, reject) => {
+          const timeoutId = setTimeout(() => {
+            observer.disconnect();
+            reject(new Error('Timeout waiting for DOM changes'));
+          }, timeout);
 
-      // since not all childrenIds are visible, we need to find the one that is
-      for (const messageId of childrenIds) {
-        element = document.querySelector(`[data-message-id="${messageId}"]`);
-        if (element) {
-          break;
-        }
-      }
-      // find the message id and scroll to it
-      if (element) {
-        const buttonDiv = element.parentElement?.parentElement;
-        if (buttonDiv) {
-          setTimeout(() => {
-            const buttons = buttonDiv.querySelectorAll("button");
-            const buttonIndex = Array.from(buttons).findIndex(button => button.getAttribute('aria-label') === "Edit message");
-            if (buttonIndex !== -1) {
-              buttons[buttonIndex].click();
-            } else {
-              throw new Error(`Button with required aria-label not found`);
+          const observer = new MutationObserver((mutations) => {
+            if (mutations.length > 0) {
+              clearTimeout(timeoutId);
+              observer.disconnect();
+              setTimeout(resolve, 50);
             }
+          });
 
-            setTimeout(() => {
-              const textArea = buttonDiv.querySelector("textarea");
-              if (textArea) {
-                textArea.value = message;
-                textArea.dispatchEvent(new Event('input', { bubbles: true }));
-              }
-              element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          observer.observe(element, {
+            childList: true,
+            subtree: true,
+            attributes: true,
+            characterData: true
+          });
+        });
+      };
 
-              // since we have edited the message in place now, we only have to click on the "send" button and then force an update
-
-              let currentElement: Element | null = textArea;
-              let sendButton: HTMLButtonElement | null = null;
-              let iterations = 0;
-              
-              while (currentElement && iterations < 10) {
-                const buttons = currentElement.querySelectorAll('button');
-                sendButton = Array.from(buttons).find(button => button.textContent?.trim() === 'Send') as HTMLButtonElement || null;
-                if (sendButton) break;
-                
-                currentElement = currentElement.parentElement;
-                iterations++;
-              }
-
-
-              // sometimes being too fast is bad, but relying on timeout should not be the way   
-              setTimeout(() => {
-                if (sendButton) {
-                  sendButton.click();
-                }
-              }, 1000);
-              
-              if (sendButton) {
-                sendButton.click();
-              }
-            }, 100);
-          }, 100);
-
+      const performResponse = async () => {
+        // Find the first visible message element
+        let element = null;
+        for (const messageId of childrenIds) {
+          element = document.querySelector(`[data-message-id="${messageId}"]`);
+          if (element) break;
         }
-      }
+        if (!element) throw new Error('No visible message element found');
+
+        const buttonDiv = element.parentElement?.parentElement;
+        if (!buttonDiv) throw new Error('Button container not found');
+
+        // Click edit button
+        const buttons = buttonDiv.querySelectorAll("button");
+        const editButton = Array.from(buttons).find(button => 
+          button.getAttribute('aria-label') === "Edit message"
+        );
+        if (!editButton) throw new Error('Edit button not found');
+
+        editButton.click();
+        await waitForDomChange(buttonDiv);
+
+        // Set textarea value
+        let textArea = buttonDiv.querySelector("textarea");
+        let attempts = 0;
+        const maxAttempts = 5;
+        
+        while (!textArea && attempts < maxAttempts) {
+          await new Promise(resolve => setTimeout(resolve, 100));
+          textArea = buttonDiv.querySelector("textarea");
+          attempts++;
+        }
+        
+        if (!textArea) throw new Error('Textarea not found after multiple attempts');
+        
+        textArea.value = message;
+        textArea.dispatchEvent(new Event('input', { bubbles: true }));
+        element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+
+        // Find and click send button
+        let currentElement: Element | null = textArea;
+        let sendButton: HTMLButtonElement | null = null;
+        let iterations = 0;
+
+        while (currentElement && iterations < 10) {
+          const buttons = currentElement.querySelectorAll('button');
+          sendButton = Array.from(buttons).find(
+            button => button.textContent?.trim() === 'Send'
+          ) as HTMLButtonElement || null;
+          if (sendButton) break;
+
+          currentElement = currentElement.parentElement;
+          iterations++;
+        }
+
+        if (!sendButton) throw new Error('Send button not found');
+        sendButton.click();
+
+        // Wait for final update after sending
+        await waitForDomChange(buttonDiv, 2000);
+      };
+
+      // Execute the async function and handle errors
+      return performResponse().catch(error => {
+        console.error('Error in respondToMessage:', error);
+        throw error;
+      });
     },
     args: [childrenIds, message]
   });
