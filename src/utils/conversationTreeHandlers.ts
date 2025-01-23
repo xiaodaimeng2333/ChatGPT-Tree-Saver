@@ -8,15 +8,23 @@ export const createContextMenuHandler = (ref: React.RefObject<HTMLDivElement>, s
     const nodeId = node.data?.id ?? '';
     
     if (pane) {
+      // Get scroll position
+      const scrollTop = ref.current?.scrollTop || 0;
+      const scrollLeft = ref.current?.scrollLeft || 0;
+
+      // Calculate position considering scroll offset
+      const yPos = event.clientY + scrollTop;
+      const xPos = event.clientX + scrollLeft;
+
       setMenu({
         messageId: nodeId,
         message: node.data!.label,
         childrenIds: node.children,
         role: node.data?.role ?? '',
-        top: event.clientY < pane.height - 200 && event.clientY ? event.clientY - 48 : false,
-        left: event.clientX < pane.width - 200 && event.clientX ? event.clientX : false,
-        right: event.clientX >= pane.width - 200 && pane.width - event.clientX,
-        bottom: event.clientY >= pane.height - 200 && pane.height - event.clientY + 48,
+        top: yPos < pane.height - 200 && yPos ? yPos - 48 : false,
+        left: xPos < pane.width - 200 && xPos ? xPos : false,
+        right: xPos >= pane.width - 200 && pane.width - xPos,
+        bottom: yPos >= pane.height - 200 && pane.height - yPos + 48,
         hidden: node.data?.hidden
       });
     }

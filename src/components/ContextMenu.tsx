@@ -4,7 +4,7 @@ import { ContextMenuProps } from '../types/interfaces';
 export const ContextMenu = (props: ContextMenuProps) => {
     // Group state declarations
     const [showInput, setShowInput] = useState(false);
-    const [inputValue, setInputValue] = useState('');
+    const [inputValue, setInputValue] = useState(props.message || '');
     const menuRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
@@ -20,12 +20,8 @@ export const ContextMenu = (props: ContextMenuProps) => {
         };
     }, [props.onClick]);
 
-    // Helper functions
-    const handleInputChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-        setInputValue(event.target.value);
-    };
-
     const handleActionClick = () => {
+        setInputValue(props.message || '');
         setShowInput(true);
     };
 
@@ -129,7 +125,6 @@ export const ContextMenu = (props: ContextMenuProps) => {
             ref={menuRef}
             style={getPositionStyle()}
             className="bg-white shadow-lg rounded-lg p-3 z-50 min-w-[180px]"
-            
         >
             {props.role && (
                 <div className="px-2 py-1 text-xs text-gray-500 border-b border-gray-100">
@@ -143,31 +138,39 @@ export const ContextMenu = (props: ContextMenuProps) => {
                 >
                     Select
                 </button>
-                <button 
-                    className="w-full px-2 py-1.5 text-sm text-left text-gray-700 hover:bg-gray-50 rounded transition-colors" 
-                    onClick={handleActionClick}
-                >
-                    {props.role === 'user' ? 'Edit this message' : 'Respond to this message'}
-                </button>
+                {(props.childrenIds && props.childrenIds.length > 0) && (
+                    <button 
+                        className="w-full px-2 py-1.5 text-sm text-left text-gray-700 hover:bg-gray-50 rounded transition-colors" 
+                        onClick={handleActionClick}
+                    >
+                        {props.role === 'user' ? 'Edit this message' : 'Respond to this message'}
+                    </button>
+                )}
                 {showInput && (
                     <div className="mt-2">
-                        <div className="relative flex items-center">
-                            <input
-                                type="text"
+                        <div className="relative flex flex-col">
+                            <textarea
                                 value={inputValue}
-                                onChange={handleInputChange}
-                                onKeyDown={(e) => e.key === 'Enter' && handleSend()}
-                                className="w-full px-4 py-2 pr-10 text-sm text-gray-700 border rounded-lg focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                                onChange={(e) => setInputValue(e.target.value)}
+                                onKeyDown={(e) => {
+                                    if (e.key === 'Enter' && e.metaKey) {
+                                        handleSend();
+                                    }
+                                }}
+                                className="w-full px-4 py-2 text-sm text-gray-700 border rounded-lg focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 min-h-[100px] resize-y"
                                 placeholder={props.role === 'user' ? "Edit message..." : "Type your response..."}
                                 autoFocus
                             />
-                            <button 
-                                onClick={handleSend}
-                                className="absolute right-2 p-1 text-gray-400 hover:text-blue-500 transition-colors disabled:opacity-50"
-                                disabled={!inputValue.trim()}
-                            >
-                                <span className="text-xl">➔</span>
-                            </button>
+                            <div className="flex justify-between items-center mt-2">
+                                <span className="text-xs text-gray-500">Press ⌘+Enter to send</span>
+                                <button 
+                                    onClick={handleSend}
+                                    className="px-3 py-1 text-sm text-white bg-blue-500 rounded hover:bg-blue-600 transition-colors disabled:opacity-50"
+                                    disabled={!inputValue.trim()}
+                                >
+                                    Send
+                                </button>
+                            </div>
                         </div>
                     </div>
                 )}
