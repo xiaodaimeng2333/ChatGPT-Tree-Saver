@@ -150,7 +150,7 @@ export const ContextMenu = (props: ContextMenuProps) => {
                     <div className="mt-2">
                         <div className="relative flex flex-col">
                             <textarea
-                                value={inputValue}
+                                value={props.role === 'user' ? inputValue : ''}
                                 onChange={(e) => setInputValue(e.target.value)}
                                 onKeyDown={(e) => {
                                     if (e.key === 'Enter' && e.metaKey) {
