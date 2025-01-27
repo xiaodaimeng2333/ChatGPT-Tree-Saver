@@ -4,7 +4,7 @@ import { ContextMenuProps } from '../types/interfaces';
 export const ContextMenu = (props: ContextMenuProps) => {
     // Group state declarations
     const [showInput, setShowInput] = useState(false);
-    const [inputValue, setInputValue] = useState(props.message || '');
+    const [inputValue, setInputValue] = useState(props.role === 'user' ? (props.message || '') : '');
     const menuRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
@@ -21,7 +21,11 @@ export const ContextMenu = (props: ContextMenuProps) => {
     }, [props.onClick]);
 
     const handleActionClick = () => {
-        setInputValue(props.message || '');
+        if (props.role === 'user') {
+            setInputValue(props.message || '');
+        } else {
+            setInputValue('');
+        }
         setShowInput(true);
     };
 
@@ -150,7 +154,7 @@ export const ContextMenu = (props: ContextMenuProps) => {
                     <div className="mt-2">
                         <div className="relative flex flex-col">
                             <textarea
-                                value={props.role === 'user' ? inputValue : ''}
+                                value={inputValue}
                                 onChange={(e) => setInputValue(e.target.value)}
                                 onKeyDown={(e) => {
                                     if (e.key === 'Enter' && e.metaKey) {
