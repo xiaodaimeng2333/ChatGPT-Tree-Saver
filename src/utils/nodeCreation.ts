@@ -57,7 +57,8 @@ export const createNodesInOrder = async (
         timestamp: child.message!.create_time ?? undefined,
         id: child.id,
         hidden: true,
-        contentType: child.message!.content.content_type
+        contentType: child.message!.content.content_type,
+        model_slug: child.message!.metadata.model_slug ?? undefined
       };
       
       newNodes.push(child);

@@ -43,6 +43,11 @@ export const CustomNode = ({ data }: { data: any }) => {
               }`} />
               <div className="text-xs font-semibold text-gray-500 uppercase">
                 {data.role}
+                {data.role === 'assistant' && data.model_slug && (
+                  <span className="ml-2 font-normal text-gray-400 italic lowercase">
+                    {data.model_slug}
+                  </span>
+                )}
               </div>
             </div>
             {/* Document icon for multimodal content */}
@@ -63,6 +68,7 @@ export const CustomNode = ({ data }: { data: any }) => {
             }`} 
             style={{ wordBreak: 'break-word' }}
           >
+            
             <ReactMarkdown remarkPlugins={[remarkGfm]}>{data.label}</ReactMarkdown>
           </div>
   
