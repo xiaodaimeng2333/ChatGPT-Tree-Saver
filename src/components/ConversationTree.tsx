@@ -138,27 +138,9 @@ const ConversationTree = () => {
     const viewerUrl = chrome.runtime.getURL('viewer.html');
     console.log('Opening viewer at:', viewerUrl);
     
-    // 如果有对话数据，先保存到本地存储
-    if (conversationData) {
-      const dataStr = JSON.stringify(conversationData, null, 2);
-      // Use conversation title as filename, fallback to timestamp if no title
-      const fileName = conversationData.title 
-        ? `${conversationData.title.replace(/[\\/:*?"<>|]/g, '-')}.json` 
-        : `chat-tree-${new Date().toISOString().replace(/[:.]/g, '-')}.json`;
-      
-      // 创建下载链接并触发下载
-      const linkElement = document.createElement('a');
-      linkElement.setAttribute('href', `data:application/json;charset=utf-8,${encodeURIComponent(dataStr)}`);
-      linkElement.setAttribute('download', fileName);
-      linkElement.style.display = 'none';
-      document.body.appendChild(linkElement);
-      linkElement.click();
-      document.body.removeChild(linkElement);
-    }
-    
     // 打开查看器页面
     chrome.tabs.create({ url: viewerUrl });
-  }, [conversationData]);
+  }, []);
 
   if (isLoading) return <LoadingSpinner />;
   if (!conversationData) return <ErrorState />;

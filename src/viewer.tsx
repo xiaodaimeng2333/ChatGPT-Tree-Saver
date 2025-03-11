@@ -142,14 +142,6 @@ const Viewer: React.FC = () => {
       currentId = node.children[0]; // 默认选择第一个子节点
     }
     setCurrentPath(newPath);
-
-    // 滚动到底部
-    setTimeout(() => {
-      chatContainerRef.current?.scrollTo({
-        top: chatContainerRef.current.scrollHeight,
-        behavior: 'smooth'
-      });
-    }, 100);
   };
 
   const triggerFileInput = () => {
