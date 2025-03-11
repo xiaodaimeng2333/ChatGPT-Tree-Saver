@@ -49,14 +49,32 @@ const Viewer: React.FC = () => {
     reader.onload = (e) => {
       try {
         const content = e.target?.result as string;
-        const data = JSON.parse(content) as ConversationData;
+        console.log('File content length:', content.length);
+        
+        // 尝试解析 JSON
+        let data;
+        try {
+          data = JSON.parse(content) as ConversationData;
+        } catch (parseError: any) {
+          console.error('JSON parse error:', parseError);
+          setError(`JSON 解析错误: ${parseError.message}`);
+          setIsLoading(false);
+          return;
+        }
+        
+        console.log('Data parsed successfully');
         
         // 处理对话数据
-        const processedMessages = processConversationData(data);
-        setMessages(processedMessages.messages);
-        setCurrentPath(processedMessages.initialPath);
+        try {
+          const processedMessages = processConversationData(data);
+          setMessages(processedMessages.messages);
+          setCurrentPath(processedMessages.initialPath);
+        } catch (processError: any) {
+          console.error('Error processing conversation data:', processError);
+          setError(`处理对话数据错误: ${processError.message}`);
+        }
       } catch (err) {
-        console.error('Error parsing file:', err);
+        console.error('Error handling file:', err);
         setError('无法解析文件。请确保上传的是有效的对话树JSON文件。');
       } finally {
         setIsLoading(false);
@@ -98,13 +116,31 @@ const Viewer: React.FC = () => {
     // 处理所有节点，从第一个有效节点开始
     const processNode = (id: string) => {
       const node = mapping[id];
+      
+      // 处理消息内容，支持文本和图片
+      let content = '';
+      if (node.message?.content?.parts) {
+        // 处理所有 parts
+        content = node.message.content.parts
+          .map(part => {
+            // 如果是字符串，直接返回
+            if (typeof part === 'string') {
+              return part;
+            }
+            // 如果不是字符串（可能是图片对象），返回 [图片] 提示
+            return '[图片]';
+          })
+          .join('\n\n');
+      }
+      
       processedMessages[id] = {
         id,
         role: node.message?.author?.role || 'unknown',
-        content: node.message?.content?.parts?.[0] || '',
+        content: content || '',
         parent: node.parent,
         children: node.children
       };
+      
       // 递归处理子节点
       node.children.forEach(childId => {
         if (mapping[childId]) {
