@@ -1,4 +1,4 @@
-import { copyFileSync } from 'fs';
+import { copyFileSync, readFileSync, writeFileSync, readdirSync } from 'fs';
 import { resolve } from 'path';
 import { fileURLToPath } from 'url';
 import { dirname } from 'path';
@@ -20,17 +20,32 @@ copyFileSync(
   );
 });
 
-// Copy viewer.html and viewer.js from public directory
+// Process viewer.html
 try {
-  copyFileSync(
-    resolve(__dirname, '../public/viewer.html'),
-    resolve(__dirname, '../dist/viewer.html')
-  );
-  copyFileSync(
-    resolve(__dirname, '../public/viewer.js'),
-    resolve(__dirname, '../dist/viewer.js')
-  );
-  console.log('Copied viewer files to dist directory');
+  // Read the built viewer.html
+  const viewerHtmlPath = resolve(__dirname, '../dist/viewer.html');
+  let viewerHtml = readFileSync(viewerHtmlPath, 'utf8');
+
+  // Find all relevant files in dist directory
+  const distFiles = readdirSync(resolve(__dirname, '../dist'));
+  const viewerScript = distFiles.find(file => file.startsWith('viewer-') && file.endsWith('.js'));
+  const indexScript = distFiles.find(file => file.startsWith('index-') && file.endsWith('.js'));
+  const viewerCss = distFiles.find(file => file.startsWith('viewer-') && file.endsWith('.css'));
+
+  if (!viewerScript || !indexScript || !viewerCss) {
+    throw new Error('Could not find required files in dist directory');
+  }
+
+  // Update all resource paths to be relative
+  viewerHtml = viewerHtml
+    .replace(/href="\/([^"]+)"/g, 'href="./$1"')
+    .replace(/src="\/([^"]+)"/g, 'src="./$1"')
+    .replace(/href="([^"./][^"]+)"/g, 'href="./$1"')
+    .replace(/src="([^"./][^"]+)"/g, 'src="./$1"');
+
+  // Write the updated viewer.html
+  writeFileSync(viewerHtmlPath, viewerHtml);
+  console.log('Updated viewer.html with correct resource paths');
 } catch (error) {
-  console.error('Error copying viewer files:', error);
+  console.error('Error processing viewer files:', error);
 }
