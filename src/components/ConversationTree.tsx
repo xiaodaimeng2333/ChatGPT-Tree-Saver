@@ -117,9 +117,10 @@ const ConversationTree = () => {
     const dataStr = JSON.stringify(conversationData, null, 2);
     const dataUri = `data:application/json;charset=utf-8,${encodeURIComponent(dataStr)}`;
     
-    // Create a timestamp for the filename
-    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-    const fileName = `chat-tree-${timestamp}.json`;
+    // Use conversation title as filename, fallback to timestamp if no title
+    const fileName = conversationData.title 
+      ? `${conversationData.title.replace(/[\\/:*?"<>|]/g, '-')}.json` 
+      : `chat-tree-${new Date().toISOString().replace(/[:.]/g, '-')}.json`;
     
     // Create a download link and trigger it
     const linkElement = document.createElement('a');
@@ -140,8 +141,10 @@ const ConversationTree = () => {
     // 如果有对话数据，先保存到本地存储
     if (conversationData) {
       const dataStr = JSON.stringify(conversationData, null, 2);
-      const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-      const fileName = `chat-tree-${timestamp}.json`;
+      // Use conversation title as filename, fallback to timestamp if no title
+      const fileName = conversationData.title 
+        ? `${conversationData.title.replace(/[\\/:*?"<>|]/g, '-')}.json` 
+        : `chat-tree-${new Date().toISOString().replace(/[:.]/g, '-')}.json`;
       
       // 创建下载链接并触发下载
       const linkElement = document.createElement('a');
