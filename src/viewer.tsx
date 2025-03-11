@@ -84,24 +84,46 @@ const Viewer: React.FC = () => {
     rootId = Object.keys(mapping).find(id => !mapping[id].parent);
     if (!rootId) throw new Error('找不到根节点');
 
-    // 处理所有节点
-    Object.entries(mapping).forEach(([id, node]) => {
+    // 找到第一个非空的有效节点
+    let startId = rootId;
+    let skippedCount = 0;
+    while (startId && 
+           skippedCount < 2 && 
+           mapping[startId].message?.author?.role === 'assistant' && 
+           !mapping[startId].message?.content?.parts?.[0]) {
+      startId = mapping[startId].children[0];
+      skippedCount++;
+    }
+
+    // 处理所有节点，从第一个有效节点开始
+    const processNode = (id: string) => {
+      const node = mapping[id];
       processedMessages[id] = {
         id,
         role: node.message?.author?.role || 'unknown',
-        content: node.message?.content?.parts?.[0] || '无内容',
+        content: node.message?.content?.parts?.[0] || '',
         parent: node.parent,
         children: node.children
       };
-    });
+      // 递归处理子节点
+      node.children.forEach(childId => {
+        if (mapping[childId]) {
+          processNode(childId);
+        }
+      });
+    };
+
+    if (startId) {
+      processNode(startId);
+    }
 
     // 构建初始路径
     const initialPath: string[] = [];
-    let currentId = rootId;
+    let currentId = startId;
     while (currentId) {
       initialPath.push(currentId);
       const node = processedMessages[currentId];
-      currentId = node.children[0]; // 默认选择第一个子节点
+      currentId = node.children[0];
     }
 
     return { messages: processedMessages, initialPath };
@@ -186,16 +208,44 @@ const Viewer: React.FC = () => {
 
       {Object.keys(messages).length > 0 && (
         <div className="chat-container" ref={chatContainerRef}>
-          {currentPath.map((messageId) => {
+          {currentPath.map((messageId, index) => {
             const message = messages[messageId];
-            const hasMultipleChildren = message.children.length > 1;
+            
+            // 特别处理：跳过根节点和系统消息
+            if (index < 2 && (message.role === 'system' || message.role === 'unknown') && !message.content.trim()) {
+              return null;
+            }
+            
             const isUser = message.role === 'user';
+            const parent = message.parent;
+            const hasSiblings = parent && messages[parent]?.children.length > 1;
             
             return (
               <div key={messageId} className="message-group">
                 <div className={`message ${message.role}`}>
-                  <div className="role-indicator">
-                    {isUser ? '用户输入' : 'AI 回复'}
+                  <div className="message-header">
+                    <div className="role-indicator">
+                      {isUser ? '用户输入' : 'AI 回复'}
+                    </div>
+                    {hasSiblings && (
+                      <div className="branch-buttons">
+                        {messages[parent].children.map((siblingId, siblingIndex) => {
+                          const isSelected = currentPath.includes(siblingId);
+                          const preview = getMessagePreview(siblingId);
+                          const siblingRole = messages[siblingId].role;
+                          return (
+                            <button
+                              key={siblingId}
+                              className={`branch-button ${isSelected ? 'selected' : ''} ${siblingRole}`}
+                              onClick={() => handleSwitchBranch(parent, siblingId)}
+                              title={preview}
+                            >
+                              {siblingRole === 'user' ? `输入 ${siblingIndex + 1}` : `回复 ${siblingIndex + 1}`}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
                   </div>
                   <div className="message-content">
                     <ReactMarkdown>
@@ -203,30 +253,6 @@ const Viewer: React.FC = () => {
                     </ReactMarkdown>
                   </div>
                 </div>
-                {hasMultipleChildren && (
-                  <div className="branch-selector">
-                    <div className="branch-label">
-                      {message.children.length > 0 && messages[message.children[0]].role === 'user' ? '选择其他输入：' : '选择其他回复：'}
-                    </div>
-                    <div className="branch-buttons">
-                      {message.children.map((childId, childIndex) => {
-                        const isSelected = currentPath.includes(childId);
-                        const preview = getMessagePreview(childId);
-                        const childRole = messages[childId].role;
-                        return (
-                          <button
-                            key={childId}
-                            className={`branch-button ${isSelected ? 'selected' : ''} ${childRole}`}
-                            onClick={() => handleSwitchBranch(messageId, childId)}
-                            title={preview}
-                          >
-                            {childRole === 'user' ? `输入 ${childIndex + 1}` : `回复 ${childIndex + 1}`}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                )}
               </div>
             );
           })}

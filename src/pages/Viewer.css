@@ -75,11 +75,18 @@
   background-color: #ffffff;
 }
 
+.message-header {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 0.75rem;
+}
+
 .role-indicator {
   font-size: 0.75rem;
   color: #6b7280;
-  margin-bottom: 0.5rem;
   font-weight: 500;
+  min-width: 4rem;
 }
 
 .message-content {
@@ -183,15 +190,7 @@
 }
 
 .branch-selector {
-  padding: 1rem 1.5rem;
-  background-color: #f8f9fa;
-  border-top: 1px solid #f0f0f0;
-}
-
-.branch-label {
-  font-size: 0.875rem;
-  color: #6b7280;
-  margin-bottom: 0.5rem;
+  display: none;
 }
 
 .branch-buttons {
@@ -204,10 +203,10 @@
   background-color: #f3f4f6;
   color: #111827;
   border: 1px solid #e5e7eb;
-  padding: 0.5rem 1rem;
+  padding: 0.25rem 0.75rem;
   border-radius: 4px;
   cursor: pointer;
-  font-size: 0.875rem;
+  font-size: 0.75rem;
   transition: all 0.2s;
 }
 
