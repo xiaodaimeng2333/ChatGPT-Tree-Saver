@@ -38,7 +38,7 @@
         "extension_pages": "script-src 'self'; object-src 'self';"
     },
     "web_accessible_resources": [{
-        "resources": ["logo16.png", "logo48.png", "logo128.png", "viewer.html"],
-        "matches": ["https://chatgpt.com/*"]
+        "resources": ["logo16.png", "logo48.png", "logo128.png", "viewer.html", "viewer-*.js", "index-*.js", "index-*.css"],
+        "matches": ["https://chatgpt.com/*", "<all_urls>"]
     }]
 }

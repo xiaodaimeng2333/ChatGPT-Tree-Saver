@@ -1,16 +1,105 @@
 import { useState, useCallback, useRef } from 'react';
-import { ReactFlow, Background, Controls, NodeTypes } from '@xyflow/react';
+import { ReactFlow, Background, Controls, NodeTypes, Node, Edge } from '@xyflow/react';
 import { CustomNode } from '../components/CustomNode';
-import { createNodesInOrder } from '../utils/nodeCreation';
 import '@xyflow/react/dist/style.css';
 
+// 定义节点类型
 const nodeTypes: NodeTypes = {
   custom: CustomNode,
 };
 
+// 定义对话数据的接口
+interface ConversationNode {
+  id: string;
+  message?: {
+    content?: {
+      parts?: any[];
+      content_type?: string;
+    };
+    author?: {
+      role?: string;
+    };
+    create_time?: number;
+    metadata?: {
+      model_slug?: string;
+    };
+  };
+  parent?: string;
+  children: string[];
+}
+
+interface ConversationData {
+  mapping: Record<string, ConversationNode>;
+}
+
+// 简化版的节点创建函数，避免依赖原始的createNodesInOrder
+const processConversationData = (conversationData: ConversationData): { nodes: Node[]; edges: Edge[] } => {
+  if (!conversationData || !conversationData.mapping) {
+    throw new Error('无效的对话数据格式');
+  }
+
+  const mapping = conversationData.mapping;
+  const newNodes: Node[] = [];
+  const newEdges: Edge[] = [];
+  const processedIds = new Set<string>();
+
+  // 递归处理节点及其子节点
+  const processNode = (nodeId: string, x = 0, y = 0, level = 0) => {
+    if (processedIds.has(nodeId)) return;
+    processedIds.add(nodeId);
+
+    const node = mapping[nodeId];
+    if (!node) return;
+
+    // 创建节点
+    const nodeData: Node = {
+      id: nodeId,
+      type: 'custom',
+      position: { x: x * 300, y: y * 150 },
+      data: {
+        label: node.message?.content?.parts?.[0] || '无内容',
+        role: node.message?.author?.role || 'unknown',
+        timestamp: node.message?.create_time,
+        id: nodeId,
+        hidden: false,
+        contentType: node.message?.content?.content_type || 'text',
+        model_slug: node.message?.metadata?.model_slug
+      }
+    };
+    
+    newNodes.push(nodeData);
+
+    // 处理子节点
+    if (node.children && node.children.length > 0) {
+      node.children.forEach((childId: string, index: number) => {
+        // 创建边
+        newEdges.push({
+          id: `${nodeId}-${childId}`,
+          source: nodeId,
+          target: childId,
+          type: 'smoothstep',
+          animated: true,
+          style: { stroke: '#000000', strokeWidth: 2 }
+        });
+
+        // 递归处理子节点
+        processNode(childId, x + index - (node.children.length - 1) / 2, y + 1, level + 1);
+      });
+    }
+  };
+
+  // 找到根节点
+  const rootNode = Object.values(mapping).find(node => !node.parent);
+  if (rootNode) {
+    processNode(rootNode.id);
+  }
+
+  return { nodes: newNodes, edges: newEdges };
+};
+
 const Viewer = () => {
-  const [nodes, setNodes] = useState([]);
-  const [edges, setEdges] = useState([]);
+  const [nodes, setNodes] = useState<Node[]>([]);
+  const [edges, setEdges] = useState<Edge[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const reactFlowInstance = useRef<any>(null);
@@ -27,16 +116,12 @@ const Viewer = () => {
     reader.onload = async (e) => {
       try {
         const content = e.target?.result as string;
-        const conversationData = JSON.parse(content);
+        const conversationData = JSON.parse(content) as ConversationData;
         
-        // 模拟checkNodes函数，因为我们不需要检查DOM
-        const mockCheckNodes = async (nodeIds: string[]) => {
-          return nodeIds.map(() => true);
-        };
-
-        const { nodes: newNodes, edges: newEdges } = await createNodesInOrder(conversationData, mockCheckNodes);
-        setNodes(newNodes as any);
-        setEdges(newEdges as any);
+        // 使用简化版的处理函数
+        const { nodes: newNodes, edges: newEdges } = processConversationData(conversationData);
+        setNodes(newNodes);
+        setEdges(newEdges);
         
         // 自动适应视图
         setTimeout(() => reactFlowInstance.current?.fitView(), 100);

@@ -20,13 +20,17 @@ copyFileSync(
   );
 });
 
-// Ensure viewer.html is in the dist directory
+// Copy viewer.html and viewer.js from public directory
 try {
   copyFileSync(
-    resolve(__dirname, '../viewer.html'),
+    resolve(__dirname, '../public/viewer.html'),
     resolve(__dirname, '../dist/viewer.html')
   );
-  console.log('Copied viewer.html to dist directory');
+  copyFileSync(
+    resolve(__dirname, '../public/viewer.js'),
+    resolve(__dirname, '../dist/viewer.js')
+  );
+  console.log('Copied viewer files to dist directory');
 } catch (error) {
-  console.error('Error copying viewer.html:', error);
+  console.error('Error copying viewer files:', error);
 }
