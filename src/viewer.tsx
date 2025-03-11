@@ -134,6 +134,13 @@ const Viewer: React.FC = () => {
     fileInputRef.current?.click();
   };
 
+  const getMessagePreview = (messageId: string) => {
+    const message = messages[messageId];
+    const content = message.content;
+    const maxLength = 50;
+    return content.length > maxLength ? content.slice(0, maxLength) + '...' : content;
+  };
+
   return (
     <div className="viewer-container">
       <div className="header">
@@ -182,29 +189,38 @@ const Viewer: React.FC = () => {
           {currentPath.map((messageId) => {
             const message = messages[messageId];
             const hasMultipleChildren = message.children.length > 1;
+            const isUser = message.role === 'user';
             
             return (
               <div key={messageId} className="message-group">
                 <div className={`message ${message.role}`}>
+                  <div className="role-indicator">
+                    {isUser ? '用户输入' : 'AI 回复'}
+                  </div>
                   <div className="message-content">
                     <ReactMarkdown>
-                      {message.content}
+                      {message.content.trim()}
                     </ReactMarkdown>
                   </div>
                 </div>
                 {hasMultipleChildren && (
                   <div className="branch-selector">
-                    <div className="branch-label">选择回复：</div>
+                    <div className="branch-label">
+                      {message.children.length > 0 && messages[message.children[0]].role === 'user' ? '选择其他输入：' : '选择其他回复：'}
+                    </div>
                     <div className="branch-buttons">
                       {message.children.map((childId, childIndex) => {
                         const isSelected = currentPath.includes(childId);
+                        const preview = getMessagePreview(childId);
+                        const childRole = messages[childId].role;
                         return (
                           <button
                             key={childId}
-                            className={`branch-button ${isSelected ? 'selected' : ''}`}
+                            className={`branch-button ${isSelected ? 'selected' : ''} ${childRole}`}
                             onClick={() => handleSwitchBranch(messageId, childId)}
+                            title={preview}
                           >
-                            选项 {childIndex + 1}
+                            {childRole === 'user' ? `输入 ${childIndex + 1}` : `回复 ${childIndex + 1}`}
                           </button>
                         );
                       })}
