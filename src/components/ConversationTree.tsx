@@ -7,6 +7,7 @@ import { createContextMenuHandler, checkNodes } from '../utils/conversationTreeH
 import { createNodesInOrder } from '../utils/nodeCreation';
 import { calculateSteps } from '../utils/nodeNavigation';
 import { RefreshButton } from './RefreshButton';
+import { SaveButton } from './SaveButton';
 import { CustomNode } from "./CustomNode";
 import '@xyflow/react/dist/style.css';
 
@@ -107,12 +108,35 @@ const ConversationTree = () => {
     [setEdges]
   );
 
+  // Add handleSave function
+  const handleSave = useCallback(() => {
+    if (!conversationData) return;
+    
+    // Create a JSON file with the conversation data
+    const dataStr = JSON.stringify(conversationData, null, 2);
+    const dataUri = `data:application/json;charset=utf-8,${encodeURIComponent(dataStr)}`;
+    
+    // Create a timestamp for the filename
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const fileName = `chat-tree-${timestamp}.json`;
+    
+    // Create a download link and trigger it
+    const linkElement = document.createElement('a');
+    linkElement.setAttribute('href', dataUri);
+    linkElement.setAttribute('download', fileName);
+    linkElement.style.display = 'none';
+    document.body.appendChild(linkElement);
+    linkElement.click();
+    document.body.removeChild(linkElement);
+  }, [conversationData]);
+
   if (isLoading) return <LoadingSpinner />;
   if (!conversationData) return <ErrorState />;
 
   return (
     <div className="w-full h-full" style={{ height: '100%', width: '100%' }}>
       <RefreshButton onClick={handleRefresh} />
+      <SaveButton onClick={handleSave} />
       <ReactFlow
         ref={ref}
         nodes={nodes}
