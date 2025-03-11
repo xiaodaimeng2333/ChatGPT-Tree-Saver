@@ -8,6 +8,7 @@ import { createNodesInOrder } from '../utils/nodeCreation';
 import { calculateSteps } from '../utils/nodeNavigation';
 import { RefreshButton } from './RefreshButton';
 import { SaveButton } from './SaveButton';
+import { ViewerButton } from './ViewerButton';
 import { CustomNode } from "./CustomNode";
 import '@xyflow/react/dist/style.css';
 
@@ -130,6 +131,11 @@ const ConversationTree = () => {
     document.body.removeChild(linkElement);
   }, [conversationData]);
 
+  // Add handleOpenViewer function
+  const handleOpenViewer = useCallback(() => {
+    chrome.tabs.create({ url: chrome.runtime.getURL('viewer.html') });
+  }, []);
+
   if (isLoading) return <LoadingSpinner />;
   if (!conversationData) return <ErrorState />;
 
@@ -137,6 +143,7 @@ const ConversationTree = () => {
     <div className="w-full h-full" style={{ height: '100%', width: '100%' }}>
       <RefreshButton onClick={handleRefresh} />
       <SaveButton onClick={handleSave} />
+      <ViewerButton onClick={handleOpenViewer} />
       <ReactFlow
         ref={ref}
         nodes={nodes}

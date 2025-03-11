@@ -19,3 +19,14 @@ copyFileSync(
     resolve(__dirname, '../dist/' + file)
   );
 });
+
+// Ensure viewer.html is in the dist directory
+try {
+  copyFileSync(
+    resolve(__dirname, '../viewer.html'),
+    resolve(__dirname, '../dist/viewer.html')
+  );
+  console.log('Copied viewer.html to dist directory');
+} catch (error) {
+  console.error('Error copying viewer.html:', error);
+}
