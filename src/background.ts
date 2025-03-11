@@ -583,6 +583,17 @@ chrome.tabs.onActivated.addListener(async (activeInfo) => {
   }
 });
 
+// 监听 URL 变化
+chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
+  if (changeInfo.url && tab.url && tab.url.includes('chatgpt.com/c/')) {
+    console.log('URL changed to:', tab.url);
+    // 向内容脚本发送消息
+    chrome.tabs.sendMessage(tabId, { action: "urlChanged", url: tab.url }).catch(err => {
+      // 忽略接收者不存在的错误
+      console.log('Error sending message to content script:', err);
+    });
+  }
+});
 
 chrome.sidePanel
   .setPanelBehavior({ openPanelOnActionClick: true })

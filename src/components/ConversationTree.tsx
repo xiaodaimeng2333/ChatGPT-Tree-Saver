@@ -36,6 +36,25 @@ const ConversationTree = () => {
     onEdgesChange
   } = useConversationTree();
 
+  // Fetch conversation history from Chrome extension
+  const fetchConversationData = useCallback(async () => {
+    setIsLoading(true);
+    try {
+      const response = await chrome.runtime.sendMessage({ action: "fetchConversationHistory" });
+      if (response.success) {
+        setConversationData(response.data);
+        // Fit view after nodes are rendered
+        setTimeout(() => reactFlowInstance.current?.fitView(), 100);
+      } else {
+        console.error('Failed to fetch conversation data:', response.error);
+      }
+    } catch (error) {
+      console.error('Error fetching conversation data:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [setConversationData, setIsLoading, reactFlowInstance]);
+
   // Create nodes and edges when conversation data changes
   useEffect(() => {
     if (conversationData) {
@@ -52,29 +71,27 @@ const ConversationTree = () => {
     }
   }, [conversationData]);
 
-  // Add another useEffect to handle initial data fetch
+  // Add another useEffect to handle initial data fetch and URL changes
   useEffect(() => {
-    handleRefresh();
-  }, []);
+    // 初始加载数据
+    fetchConversationData();
 
-  // Fetch conversation history from Chrome extension
-  const handleRefresh = useCallback(async () => {
-    setIsLoading(true);
-    try {
-      const response = await chrome.runtime.sendMessage({ action: "fetchConversationHistory" });
-      if (response.success) {
-        setConversationData(response.data);
-        // Fit view after nodes are rendered
-        setTimeout(() => reactFlowInstance.current?.fitView(), 100);
-      } else {
-        console.error('Failed to fetch conversation data:', response.error);
+    // 监听来自 background.js 的消息
+    const handleMessage = (message: any) => {
+      if (message.action === "urlChanged") {
+        console.log('Received URL change notification:', message.url);
+        fetchConversationData();
       }
-    } catch (error) {
-      console.error('Error fetching conversation data:', error);
-    } finally {
-      setIsLoading(false);
-    }
-  }, []);
+    };
+
+    // 添加消息监听器
+    chrome.runtime.onMessage.addListener(handleMessage);
+
+    // 清理函数
+    return () => {
+      chrome.runtime.onMessage.removeListener(handleMessage);
+    };
+  }, [fetchConversationData]);
 
   // Update nodes visibility by checking if they still exist in the DOM
   const updateNodesVisibility = useCallback(async () => {
@@ -147,7 +164,7 @@ const ConversationTree = () => {
 
   return (
     <div className="w-full h-full" style={{ height: '100%', width: '100%' }}>
-      <RefreshButton onClick={handleRefresh} />
+      <RefreshButton onClick={fetchConversationData} />
       <SaveButton onClick={handleSave} />
       <ViewerButton onClick={handleOpenViewer} />
       <ReactFlow
@@ -177,7 +194,7 @@ const ConversationTree = () => {
           onClick={onPaneClick} 
           onNodeClick={handleNodeClick} 
           onRefresh={updateNodesVisibility}
-          refreshNodes={handleRefresh}
+          refreshNodes={fetchConversationData}
           {...menu} 
         />}
       </ReactFlow>

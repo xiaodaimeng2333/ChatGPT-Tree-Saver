@@ -42,6 +42,7 @@ const Viewer: React.FC = () => {
     const file = event.target.files?.[0];
     if (!file) return;
 
+    console.log('开始处理文件:', file.name, '大小:', file.size, 'bytes');
     setIsLoading(true);
     setError(null);
 
@@ -49,32 +50,36 @@ const Viewer: React.FC = () => {
     reader.onload = (e) => {
       try {
         const content = e.target?.result as string;
-        console.log('File content length:', content.length);
+        console.log('文件内容长度:', content.length);
         
         // 尝试解析 JSON
         let data;
         try {
           data = JSON.parse(content) as ConversationData;
         } catch (parseError: any) {
-          console.error('JSON parse error:', parseError);
+          console.error('JSON 解析错误:', parseError);
           setError(`JSON 解析错误: ${parseError.message}`);
           setIsLoading(false);
           return;
         }
         
-        console.log('Data parsed successfully');
+        console.log('数据解析成功, 标题:', (data as any).title || '无标题');
+        console.log('对话节点数量:', Object.keys(data.mapping || {}).length);
         
         // 处理对话数据
         try {
           const processedMessages = processConversationData(data);
+          console.log('处理后的消息数量:', Object.keys(processedMessages.messages).length);
+          console.log('初始路径长度:', processedMessages.initialPath.length);
+          
           setMessages(processedMessages.messages);
           setCurrentPath(processedMessages.initialPath);
         } catch (processError: any) {
-          console.error('Error processing conversation data:', processError);
+          console.error('处理对话数据错误:', processError);
           setError(`处理对话数据错误: ${processError.message}`);
         }
       } catch (err) {
-        console.error('Error handling file:', err);
+        console.error('处理文件错误:', err);
         setError('无法解析文件。请确保上传的是有效的对话树JSON文件。');
       } finally {
         setIsLoading(false);
@@ -82,6 +87,7 @@ const Viewer: React.FC = () => {
     };
 
     reader.onerror = () => {
+      console.error('读取文件错误');
       setError('读取文件时出错。');
       setIsLoading(false);
     };
@@ -91,6 +97,7 @@ const Viewer: React.FC = () => {
 
   const processConversationData = (data: ConversationData) => {
     if (!data || !data.mapping) {
+      console.error('无效的对话数据格式:', data);
       throw new Error('无效的对话数据格式');
     }
 
@@ -100,7 +107,12 @@ const Viewer: React.FC = () => {
 
     // 首先找到根节点
     rootId = Object.keys(mapping).find(id => !mapping[id].parent);
-    if (!rootId) throw new Error('找不到根节点');
+    if (!rootId) {
+      console.error('找不到根节点, 所有节点:', Object.keys(mapping));
+      throw new Error('找不到根节点');
+    }
+    
+    console.log('找到根节点:', rootId);
 
     // 找到第一个非空的有效节点
     let startId = rootId;
@@ -109,12 +121,20 @@ const Viewer: React.FC = () => {
            skippedCount < 2 && 
            mapping[startId].message?.author?.role === 'assistant' && 
            !mapping[startId].message?.content?.parts?.[0]) {
+      console.log('跳过空的 AI 回复节点:', startId);
       startId = mapping[startId].children[0];
       skippedCount++;
     }
+    
+    console.log('开始处理节点, 起始节点:', startId);
 
     // 处理所有节点，从第一个有效节点开始
     const processNode = (id: string) => {
+      if (!mapping[id]) {
+        console.warn('节点不存在:', id);
+        return;
+      }
+      
       const node = mapping[id];
       
       // 处理消息内容，支持文本和图片
@@ -128,6 +148,7 @@ const Viewer: React.FC = () => {
               return part;
             }
             // 如果不是字符串（可能是图片对象），返回 [图片] 提示
+            console.log('发现非字符串内容:', typeof part);
             return '[图片]';
           })
           .join('\n\n');
@@ -145,12 +166,17 @@ const Viewer: React.FC = () => {
       node.children.forEach(childId => {
         if (mapping[childId]) {
           processNode(childId);
+        } else {
+          console.warn('子节点不存在:', childId);
         }
       });
     };
 
     if (startId) {
       processNode(startId);
+    } else {
+      console.error('没有有效的起始节点');
+      throw new Error('没有有效的起始节点');
     }
 
     // 构建初始路径
@@ -159,15 +185,25 @@ const Viewer: React.FC = () => {
     while (currentId) {
       initialPath.push(currentId);
       const node = processedMessages[currentId];
+      if (!node) {
+        console.warn('路径中的节点不存在:', currentId);
+        break;
+      }
       currentId = node.children[0];
     }
+
+    console.log('初始路径构建完成, 长度:', initialPath.length);
 
     return { messages: processedMessages, initialPath };
   };
 
   const handleSwitchBranch = (messageId: string, newChildId: string) => {
+    console.log('切换分支, 从:', messageId, '到子节点:', newChildId);
     const messageIndex = currentPath.indexOf(messageId);
-    if (messageIndex === -1) return;
+    if (messageIndex === -1) {
+      console.warn('消息不在当前路径中:', messageId);
+      return;
+    }
 
     // 更新路径
     const newPath = [...currentPath.slice(0, messageIndex + 1)];
@@ -175,8 +211,14 @@ const Viewer: React.FC = () => {
     while (currentId) {
       newPath.push(currentId);
       const node = messages[currentId];
+      if (!node) {
+        console.warn('路径中的节点不存在:', currentId);
+        break;
+      }
       currentId = node.children[0]; // 默认选择第一个子节点
     }
+    
+    console.log('新路径构建完成, 长度:', newPath.length);
     setCurrentPath(newPath);
   };
 
@@ -186,9 +228,13 @@ const Viewer: React.FC = () => {
 
   const getMessagePreview = (messageId: string) => {
     const message = messages[messageId];
-    const content = message.content;
-    const maxLength = 50;
-    return content.length > maxLength ? content.slice(0, maxLength) + '...' : content;
+    if (!message) return '无内容';
+    
+    // 获取消息预览，最多显示 50 个字符
+    const content = message.content.trim();
+    if (!content) return '无内容';
+    
+    return content.length > 50 ? content.substring(0, 50) + '...' : content;
   };
 
   return (
