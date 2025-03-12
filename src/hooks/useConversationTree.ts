@@ -8,6 +8,7 @@ export function useConversationTree() {
   const [conversationData, setConversationData] = useState<ConversationData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [menu, setMenu] = useState<MenuState>(null);
+  const [isDebugMode, setIsDebugMode] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   const reactFlowInstance = useRef<any>(null);
 
@@ -25,6 +26,8 @@ export function useConversationTree() {
     ref,
     reactFlowInstance,
     onNodesChange,
-    onEdgesChange
+    onEdgesChange,
+    isDebugMode,
+    setIsDebugMode
   };
 } 

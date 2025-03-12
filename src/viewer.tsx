@@ -8,6 +8,7 @@ interface Message {
   content: string;
   parent?: string;
   children: string[];
+  hidden?: boolean;
 }
 
 interface ConversationNode {
@@ -35,6 +36,7 @@ const Viewer: React.FC = () => {
   const [currentPath, setCurrentPath] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isDebugMode, setIsDebugMode] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const chatContainerRef = useRef<HTMLDivElement>(null);
 
@@ -103,10 +105,9 @@ const Viewer: React.FC = () => {
 
     const mapping = data.mapping;
     const processedMessages: Record<string, Message> = {};
-    let rootId: string | undefined;
 
-    // 首先找到根节点
-    rootId = Object.keys(mapping).find(id => !mapping[id].parent);
+    // 找到根节点后，直接使用根节点作为起始节点
+    const rootId = Object.keys(mapping).find(id => !mapping[id].parent);
     if (!rootId) {
       console.error('找不到根节点, 所有节点:', Object.keys(mapping));
       throw new Error('找不到根节点');
@@ -114,21 +115,12 @@ const Viewer: React.FC = () => {
     
     console.log('找到根节点:', rootId);
 
-    // 找到第一个非空的有效节点
+    // 使用根节点作为起始节点，不再跳过空的 AI 回复节点
     let startId = rootId;
-    let skippedCount = 0;
-    while (startId && 
-           skippedCount < 2 && 
-           mapping[startId].message?.author?.role === 'assistant' && 
-           !mapping[startId].message?.content?.parts?.[0]) {
-      console.log('跳过空的 AI 回复节点:', startId);
-      startId = mapping[startId].children[0];
-      skippedCount++;
-    }
-    
+
     console.log('开始处理节点, 起始节点:', startId);
 
-    // 处理所有节点，从第一个有效节点开始
+    // 处理所有节点，从起始节点开始
     const processNode = (id: string) => {
       if (!mapping[id]) {
         console.warn('节点不存在:', id);
@@ -137,32 +129,45 @@ const Viewer: React.FC = () => {
       
       const node = mapping[id];
       
+      // 判断是否需要隐藏该消息，但不跳过，以保持对话树结构
+      let isHidden = false;
+      if (node.message?.content?.content_type === 'model_editable_context' ||
+          (node.message?.author?.role === 'assistant' && (!node.message?.content?.parts || !node.message?.content?.parts[0]?.trim())) ||
+          ((node.message as any)?.metadata?.is_visually_hidden_from_conversation === true)) {
+        console.log('隐藏空消息或特殊 content_type:', id);
+        isHidden = true;
+      }
+      
       // 处理消息内容，支持文本和图片
       let content = '';
       if (node.message?.content?.parts) {
-        // 处理所有 parts
         content = node.message.content.parts
           .map(part => {
-            // 如果是字符串，直接返回
             if (typeof part === 'string') {
               return part;
             }
-            // 如果不是字符串（可能是图片对象），返回 [图片] 提示
             console.log('发现非字符串内容:', typeof part);
             return '[图片]';
           })
           .join('\n\n');
       }
       
+      // 如果需要隐藏，则强制置空内容
+      if (isHidden) {
+        content = '';
+      }
+      
+      // 始终将节点添加到 processedMessages，以保持对话树结构
       processedMessages[id] = {
         id,
         role: node.message?.author?.role || 'unknown',
-        content: content || '',
+        content: content,
+        hidden: isHidden,
         parent: node.parent,
         children: node.children
       };
       
-      // 递归处理子节点
+      // 递归处理所有子节点
       node.children.forEach(childId => {
         if (mapping[childId]) {
           processNode(childId);
@@ -240,7 +245,18 @@ const Viewer: React.FC = () => {
   return (
     <div className="viewer-container">
       <div className="header">
-        <h1>ChatTree 查看器</h1>
+        <div className="flex items-center space-x-4">
+          <h1>ChatTree 查看器</h1>
+          <label className="flex items-center space-x-2 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={isDebugMode}
+              onChange={(e) => setIsDebugMode(e.target.checked)}
+              className="form-checkbox h-4 w-4 text-blue-600"
+            />
+            <span className="text-sm text-gray-700">调试模式</span>
+          </label>
+        </div>
         <div>
           <input
             type="file"
@@ -284,7 +300,8 @@ const Viewer: React.FC = () => {
         <div className="chat-container" ref={chatContainerRef}>
           {currentPath.map((messageId, index) => {
             const message = messages[messageId];
-            
+            if (message.hidden) return null;
+
             // 特别处理：跳过根节点和系统消息
             if (index < 2 && (message.role === 'system' || message.role === 'unknown') && !message.content.trim()) {
               return null;
@@ -292,7 +309,7 @@ const Viewer: React.FC = () => {
             
             const isUser = message.role === 'user';
             const parent = message.parent;
-            const hasSiblings = parent && messages[parent]?.children.length > 1;
+            const hasSiblings = parent && messages[parent]?.children.filter(childId => !messages[childId].hidden).length > 1;
             
             return (
               <div key={messageId} className="message-group">
@@ -300,10 +317,15 @@ const Viewer: React.FC = () => {
                   <div className="message-header">
                     <div className="role-indicator">
                       {isUser ? '用户输入' : 'AI 回复'}
+                      {isDebugMode && (
+                        <span className="debug-id ml-2 text-gray-400 font-mono text-xs">
+                          [{messageId}]
+                        </span>
+                      )}
                     </div>
                     {hasSiblings && (
                       <div className="branch-buttons">
-                        {messages[parent].children.map((siblingId, siblingIndex) => {
+                        {messages[parent].children.filter(childId => !messages[childId].hidden).map((siblingId, siblingIndex) => {
                           const isSelected = currentPath.includes(siblingId);
                           const preview = getMessagePreview(siblingId);
                           const siblingRole = messages[siblingId].role;

@@ -331,3 +331,57 @@
   border-radius: 0.375rem;
   margin: 0.5rem 0;
 }
+
+.flex {
+  display: flex;
+}
+
+.items-center {
+  align-items: center;
+}
+
+.space-x-4 > * + * {
+  margin-left: 1rem;
+}
+
+.space-x-2 > * + * {
+  margin-left: 0.5rem;
+}
+
+.cursor-pointer {
+  cursor: pointer;
+}
+
+.form-checkbox {
+  border-radius: 0.25rem;
+  border-color: #d1d5db;
+}
+
+.form-checkbox:checked {
+  background-color: #2563eb;
+  border-color: #2563eb;
+}
+
+.text-sm {
+  font-size: 0.875rem;
+}
+
+.text-gray-700 {
+  color: #374151;
+}
+
+.ml-2 {
+  margin-left: 0.5rem;
+}
+
+.text-gray-400 {
+  color: #9ca3af;
+}
+
+.font-mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+}
+
+.text-xs {
+  font-size: 0.75rem;
+}

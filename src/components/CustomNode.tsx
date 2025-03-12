@@ -8,21 +8,17 @@ import {
 
 import { nodeWidth, nodeHeight } from "../constants/constants"
 
-
 export const CustomNode = ({ data }: { data: any }) => {   
-    // State to track if the node is expanded to full screen
     const [isExpanded, setIsExpanded] = useState(false);
   
     return (
       <>
         <div 
-          // Dynamic classes for styling based on role (user/assistant), visibility, and expansion state
           className={`px-4 py-2 shadow-lg rounded-lg border transition-all duration-300 
             ${data.role === 'user' ? 'bg-yellow-50 border-yellow-200' : 'bg-gray-50 border-gray-200'}
             ${data.hidden ? 'grayscale' : ''}
             ${isExpanded ? 'fixed top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 z-50 w-[80vw] h-[80vh]' : ''}
           `} 
-          // Dynamic styles for node dimensions and appearance
           style={{
             width: isExpanded ? undefined : nodeWidth,
             height: isExpanded ? undefined : nodeHeight,
@@ -32,25 +28,27 @@ export const CustomNode = ({ data }: { data: any }) => {
           }}
           onDoubleClick={() => setIsExpanded(!isExpanded)}
         >
-          {/* Connection handle - only shown when not expanded */}
           {!isExpanded && <Handle type="target" position={Position.Top} className="w-2 h-2" />}
           
-          {/* Header section with role indicator and content type icon */}
           <div className="flex items-center justify-between">
             <div className="flex items-center">
               <div className={`w-2 h-2 rounded-full mr-2 ${
                 data.role === 'user' ? 'bg-yellow-400' : 'bg-gray-400'
               }`} />
-              <div className="text-xs font-semibold text-gray-500 uppercase">
-                {data.role}
+              <div className="text-xs font-semibold text-gray-500 uppercase flex items-center space-x-2">
+                <span>{data.role}</span>
                 {data.role === 'assistant' && data.model_slug && (
-                  <span className="ml-2 font-normal text-gray-400 italic lowercase">
+                  <span className="font-normal text-gray-400 italic lowercase">
                     {data.model_slug}
+                  </span>
+                )}
+                {data.isDebugMode && (
+                  <span className="font-mono text-gray-400">
+                    [{data.id}]
                   </span>
                 )}
               </div>
             </div>
-            {/* Document icon for multimodal content */}
             {data.contentType === 'multimodal_text' && (
               <div>
                 <svg xmlns="http://www.w3.org/2000/svg" x="0px" y="0px" width="20" height="20" viewBox="0 0 26 26">
@@ -60,7 +58,6 @@ export const CustomNode = ({ data }: { data: any }) => {
             )}
           </div>
   
-          {/* Message content with markdown support */}
           <div className={`mt-2 text-sm text-gray-700 ${
             isExpanded  
               ? 'h-[calc(100%-100px)] overflow-y-auto nowheel' 
@@ -68,21 +65,17 @@ export const CustomNode = ({ data }: { data: any }) => {
             }`} 
             style={{ wordBreak: 'break-word' }}
           >
-            
             <ReactMarkdown remarkPlugins={[remarkGfm]}>{data.label}</ReactMarkdown>
           </div>
   
-          {/* Timestamp display */}
           {data.timestamp && (
             <div className="absolute bottom-2 left-4 text-xs text-gray-400">
               {new Date(parseFloat(data.timestamp) * 1000).toLocaleString()} 
             </div>
           )}
           
-          {/* Bottom connection handle - only shown when not expanded */}
           {!isExpanded && <Handle type="source" position={Position.Bottom} className="w-2 h-2" />}
   
-          {/* Close button for expanded view */}
           {isExpanded && (
             <button 
               className="absolute top-4 right-4 p-2 hover:bg-gray-100 rounded-full"
@@ -93,7 +86,6 @@ export const CustomNode = ({ data }: { data: any }) => {
           )}
         </div>
   
-        {/* Overlay background when expanded */}
         {isExpanded && (
           <div 
             className="fixed inset-0 bg-black bg-opacity-50 -z-10"

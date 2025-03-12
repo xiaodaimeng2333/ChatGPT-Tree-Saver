@@ -33,7 +33,10 @@ const ConversationTree = () => {
     ref,
     reactFlowInstance,
     onNodesChange,
-    onEdgesChange
+    onEdgesChange,
+    isDebugMode,
+    // @ts-ignore - 保留此状态以供其他组件使用
+    setIsDebugMode
   } = useConversationTree();
 
   // Fetch conversation history from Chrome extension
@@ -57,19 +60,26 @@ const ConversationTree = () => {
 
   // Create nodes and edges when conversation data changes
   useEffect(() => {
-    if (conversationData) {
-      createNodesInOrder(conversationData, checkNodes)
-        .then(({ nodes: newNodes, edges: newEdges }) => {
-          setNodes(newNodes as any);
-          setEdges(newEdges as any);
-          setIsLoading(false);
-        })
-        .catch(error => {
-          console.error(error);
-          setIsLoading(false);
-        });
+    if (!conversationData) {
+      return;
     }
-  }, [conversationData]);
+    createNodesInOrder(conversationData, checkNodes)
+      .then(({ nodes: newNodes, edges: newEdges }) => {
+        setNodes(newNodes.map(node => ({
+          ...node,
+          data: {
+            ...node.data,
+            isDebugMode
+          }
+        })) as any);
+        setEdges(newEdges as any);
+        setIsLoading(false);
+      })
+      .catch(error => {
+        console.error(error);
+        setIsLoading(false);
+      });
+  }, [conversationData, isDebugMode]);
 
   // Add another useEffect to handle initial data fetch and URL changes
   useEffect(() => {
