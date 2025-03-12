@@ -457,3 +457,211 @@
 .log-line:last-child {
   border-bottom: none;
 }
+
+/* 收藏功能样式 */
+.favorites-bar {
+  background-color: #f8f9fa;
+  border-bottom: 1px solid #e9ecef;
+  padding: 8px 16px;
+  display: flex;
+  align-items: center;
+  overflow-x: auto;
+  white-space: nowrap;
+  margin-bottom: 10px;
+}
+
+.favorites-title {
+  font-weight: 600;
+  margin-right: 10px;
+  color: #555;
+  font-size: 14px;
+}
+
+.favorites-list {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.favorite-item {
+  display: flex;
+  align-items: center;
+  background-color: #e6f4ff;
+  border: 1px solid #91caff;
+  border-radius: 16px;
+  padding: 4px 10px;
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.favorite-item:hover {
+  background-color: #bae0ff;
+}
+
+.favorite-star {
+  color: #faad14;
+  margin-right: 4px;
+  font-size: 14px;
+}
+
+.favorite-name {
+  max-width: 150px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.remove-favorite {
+  color: #999;
+  margin-left: 6px;
+  font-size: 16px;
+  line-height: 1;
+  background: none;
+  border: none;
+  padding: 0 4px;
+  cursor: pointer;
+}
+
+.remove-favorite:hover {
+  color: #f5222d;
+}
+
+.message-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.favorite-button {
+  background: none;
+  border: none;
+  color: #d9d9d9;
+  font-size: 18px;
+  cursor: pointer;
+  padding: 2px 5px;
+  transition: color 0.2s;
+  line-height: 1;
+}
+
+.favorite-button:hover {
+  color: #faad14;
+}
+
+.favorite-button.favorited {
+  color: #faad14;
+}
+
+.name-input-container {
+  margin: 8px 0;
+  padding: 8px;
+  background-color: #f8f9fa;
+  border-radius: 4px;
+}
+
+.name-input-container form {
+  display: flex;
+  gap: 8px;
+}
+
+.name-input {
+  flex: 1;
+  padding: 6px 10px;
+  border: 1px solid #d9d9d9;
+  border-radius: 4px;
+  font-size: 14px;
+}
+
+.submit-name,
+.cancel-name {
+  padding: 6px 12px;
+  border-radius: 4px;
+  font-size: 14px;
+  cursor: pointer;
+  border: none;
+}
+
+.submit-name {
+  background-color: #1890ff;
+  color: white;
+}
+
+.cancel-name {
+  background-color: #f0f0f0;
+  color: #666;
+}
+
+.highlight-message {
+  animation: highlight-fade 2s ease;
+}
+
+@keyframes highlight-fade {
+  0% {
+    background-color: rgba(250, 173, 20, 0.2);
+  }
+  100% {
+    background-color: transparent;
+  }
+}
+
+/* 收藏功能内联命名输入框样式 */
+.favorite-container {
+  display: flex;
+  align-items: center;
+  position: relative;
+}
+
+.inline-name-form {
+  display: flex;
+  align-items: center;
+  position: absolute;
+  left: 100%;
+  top: 0;
+  margin-left: 8px;
+  background-color: white;
+  border: 1px solid #d9d9d9;
+  border-radius: 4px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  z-index: 10;
+  white-space: nowrap;
+}
+
+.inline-name-input {
+  width: 150px;
+  padding: 4px 8px;
+  border: none;
+  font-size: 14px;
+  outline: none;
+}
+
+.inline-submit-name,
+.inline-cancel-name {
+  background: none;
+  border: none;
+  color: #666;
+  font-size: 14px;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  padding: 0;
+}
+
+.inline-submit-name {
+  color: #52c41a;
+}
+
+.inline-submit-name:hover {
+  color: #73d13d;
+}
+
+.inline-cancel-name {
+  color: #ff4d4f;
+}
+
+.inline-cancel-name:hover {
+  color: #ff7875;
+}

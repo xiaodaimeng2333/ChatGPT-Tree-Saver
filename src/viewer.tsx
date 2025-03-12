@@ -2,6 +2,13 @@ import React, { useState, useRef } from 'react';
 import ReactMarkdown from 'react-markdown';
 import './pages/Viewer.css';
 
+// 定义收藏消息的接口
+interface FavoriteMessage {
+  id: string;
+  name: string;
+  messageId: string;
+}
+
 interface Message {
   id: string;
   role: string;
@@ -38,8 +45,14 @@ const Viewer: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [isDebugMode, setIsDebugMode] = useState(false);
   const [debugLogs, setDebugLogs] = useState<string[]>([]);
+  // 收藏相关状态
+  const [favorites, setFavorites] = useState<FavoriteMessage[]>([]);
+  const [nameInputMessageId, setNameInputMessageId] = useState<string | null>(null);
+  const [nameInputValue, setNameInputValue] = useState('');
+  
   const fileInputRef = useRef<HTMLInputElement>(null);
   const chatContainerRef = useRef<HTMLDivElement>(null);
+  const nameInputRef = useRef<HTMLInputElement>(null);
 
   const addLog = (message: string) => {
     console.log(message);
@@ -546,6 +559,148 @@ const Viewer: React.FC = () => {
     return allPaths;
   };
 
+  // 处理添加收藏按钮点击
+  const handleFavoriteClick = (messageId: string) => {
+    setNameInputMessageId(messageId);
+    setNameInputValue('');
+    // 聚焦到输入框
+    setTimeout(() => {
+      nameInputRef.current?.focus();
+    }, 0);
+  };
+
+  // 处理收藏命名提交
+  const handleNameSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!nameInputMessageId || !nameInputValue.trim()) return;
+    
+    const newFavorite: FavoriteMessage = {
+      id: `fav-${Date.now()}`,
+      name: nameInputValue.trim(),
+      messageId: nameInputMessageId
+    };
+    
+    setFavorites(prev => [...prev, newFavorite]);
+    setNameInputMessageId(null);
+    setNameInputValue('');
+    
+    addLog(`已将消息 ${nameInputMessageId} 添加到收藏，名称: "${newFavorite.name}"`);
+  };
+
+  // 跳转到收藏的消息
+  const scrollToFavorite = (favoriteId: string) => {
+    const favorite = favorites.find(f => f.id === favoriteId);
+    if (!favorite) return;
+    
+    // 查找收藏的消息
+    const favoriteMessageId = favorite.messageId;
+    if (!messages[favoriteMessageId]) {
+      addLog(`收藏的消息"${favorite.name}"不存在或已被删除`);
+      return;
+    }
+    
+    // 查找消息在当前路径中的位置
+    const messageIndex = currentPath.indexOf(favoriteMessageId);
+    
+    if (messageIndex >= 0) {
+      // 如果消息已经在当前路径中，直接滚动到该位置
+      const messageElement = document.getElementById(`message-${favoriteMessageId}`);
+      if (messageElement) {
+        messageElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        // 高亮显示该消息
+        messageElement.classList.add('highlight-message');
+        setTimeout(() => {
+          messageElement.classList.remove('highlight-message');
+        }, 2000);
+      }
+    } else {
+      // 如果消息不在当前路径中，构建新路径
+      addLog(`收藏的消息"${favorite.name}"不在当前路径中，正在切换到包含此消息的分支...`);
+      
+      // 构建包含目标消息的新路径
+      const newPath = buildPathToMessage(favoriteMessageId);
+      
+      if (newPath.length > 0) {
+        // 设置新路径
+        setCurrentPath(newPath);
+        addLog(`已切换到包含消息"${favorite.name}"的分支，路径长度: ${newPath.length}`);
+        
+        // 等待组件渲染后滚动到目标消息
+        setTimeout(() => {
+          const messageElement = document.getElementById(`message-${favoriteMessageId}`);
+          if (messageElement) {
+            messageElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            messageElement.classList.add('highlight-message');
+            setTimeout(() => {
+              messageElement.classList.remove('highlight-message');
+            }, 2000);
+          }
+        }, 100);
+      } else {
+        addLog(`无法构建到消息"${favorite.name}"的路径`);
+      }
+    }
+  };
+  
+  // 构建到特定消息的路径
+  const buildPathToMessage = (targetMessageId: string): string[] => {
+    // 从目标消息开始，向上回溯构建到根节点的路径
+    const ancestors: string[] = [];
+    let currentId = targetMessageId;
+    
+    // 向上追溯所有祖先节点，直到根节点
+    while (currentId) {
+      ancestors.unshift(currentId); // 在路径前端插入当前节点
+      const parent = messages[currentId]?.parent;
+      if (!parent) break; // 已到达根节点
+      currentId = parent;
+    }
+    
+    // 从根节点向下，按照最新策略向下构建路径
+    const path = [...ancestors]; // 先包含所有祖先节点
+    
+    // 如果目标消息有子节点，继续往下构建路径
+    const buildDownwards = (nodeId: string) => {
+      const node = messages[nodeId];
+      if (!node || node.children.length === 0) return;
+      
+      // 选择最新的子节点继续构建路径
+      if (node.children.length === 1) {
+        const childId = node.children[0];
+        path.push(childId);
+        buildDownwards(childId);
+      } else {
+        // 多个子节点时，选择时间最靠后的那个
+        let latestChildId = node.children[0];
+        let latestTime = 0;
+        
+        for (const childId of node.children) {
+          const originalNode = (window as any).originalMapping?.[childId];
+          const createTime = originalNode?.message?.create_time || 0;
+          
+          if (createTime > latestTime) {
+            latestTime = createTime;
+            latestChildId = childId;
+          }
+        }
+        
+        path.push(latestChildId);
+        buildDownwards(latestChildId);
+      }
+    };
+    
+    // 从目标消息开始往下构建路径
+    buildDownwards(targetMessageId);
+    
+    return path;
+  };
+
+  // 取消收藏
+  const removeFavorite = (favoriteId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setFavorites(prev => prev.filter(f => f.id !== favoriteId));
+  };
+
   return (
     <div className="viewer-container">
       <div className="header">
@@ -592,6 +747,33 @@ const Viewer: React.FC = () => {
           </button>
         </div>
       </div>
+      
+      {/* 收藏导航区域 */}
+      {favorites.length > 0 && (
+        <div className="favorites-bar">
+          <div className="favorites-title">收藏消息:</div>
+          <div className="favorites-list">
+            {favorites.map(favorite => (
+              <div 
+                key={favorite.id} 
+                className="favorite-item"
+                onClick={() => scrollToFavorite(favorite.id)}
+                title={`跳转到: ${favorite.name}`}
+              >
+                <span className="favorite-star">★</span>
+                <span className="favorite-name">{favorite.name}</span>
+                <button 
+                  className="remove-favorite"
+                  onClick={(e) => removeFavorite(favorite.id, e)}
+                  title="移除收藏"
+                >
+                  ×
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {isLoading && (
         <div className="loading">
@@ -653,9 +835,10 @@ const Viewer: React.FC = () => {
             const isUser = message.role === 'user';
             const parent = message.parent;
             const hasSiblings = parent && messages[parent]?.children.filter(childId => !messages[childId].hidden).length > 1;
+            const isFavorite = favorites.some(f => f.messageId === messageId);
             
             return (
-              <div key={messageId} className="message-group">
+              <div key={messageId} id={`message-${messageId}`} className="message-group">
                 <div className={`message ${message.role}`}>
                   <div className="message-header">
                     <div className="role-indicator">
@@ -666,26 +849,63 @@ const Viewer: React.FC = () => {
                         </span>
                       )}
                     </div>
-                    {hasSiblings && (
-                      <div className="branch-buttons">
-                        {messages[parent].children.filter(childId => !messages[childId].hidden).map((siblingId, siblingIndex) => {
-                          const isSelected = currentPath.includes(siblingId);
-                          const preview = getMessagePreview(siblingId);
-                          const siblingRole = messages[siblingId].role;
-                          return (
-                            <button
-                              key={siblingId}
-                              className={`branch-button ${isSelected ? 'selected' : ''} ${siblingRole}`}
-                              onClick={() => handleSwitchBranch(parent, siblingId)}
-                              title={preview}
+                    <div className="message-actions">
+                      {hasSiblings && (
+                        <div className="branch-buttons">
+                          {messages[parent].children.filter(childId => !messages[childId].hidden).map((siblingId, siblingIndex) => {
+                            const isSelected = currentPath.includes(siblingId);
+                            const preview = getMessagePreview(siblingId);
+                            const siblingRole = messages[siblingId].role;
+                            return (
+                              <button
+                                key={siblingId}
+                                className={`branch-button ${isSelected ? 'selected' : ''} ${siblingRole}`}
+                                onClick={() => handleSwitchBranch(parent, siblingId)}
+                                title={preview}
+                              >
+                                {siblingRole === 'user' ? `输入 ${siblingIndex + 1}` : `回复 ${siblingIndex + 1}`}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
+                      
+                      {/* 收藏按钮和命名输入框 */}
+                      <div className="favorite-container">
+                        <button 
+                          className={`favorite-button ${isFavorite ? 'favorited' : ''}`}
+                          onClick={() => handleFavoriteClick(messageId)}
+                          title={isFavorite ? "已收藏" : "添加到收藏"}
+                        >
+                          {isFavorite ? '★' : '☆'}
+                        </button>
+                        
+                        {/* 命名输入框 - 内联显示在按钮旁边 */}
+                        {nameInputMessageId === messageId && (
+                          <form className="inline-name-form" onSubmit={handleNameSubmit}>
+                            <input
+                              ref={nameInputRef}
+                              type="text"
+                              value={nameInputValue}
+                              onChange={(e) => setNameInputValue(e.target.value)}
+                              placeholder="收藏名称..."
+                              className="inline-name-input"
+                              autoFocus
+                            />
+                            <button type="submit" className="inline-submit-name">✓</button>
+                            <button 
+                              type="button" 
+                              className="inline-cancel-name"
+                              onClick={() => setNameInputMessageId(null)}
                             >
-                              {siblingRole === 'user' ? `输入 ${siblingIndex + 1}` : `回复 ${siblingIndex + 1}`}
+                              ✕
                             </button>
-                          );
-                        })}
+                          </form>
+                        )}
                       </div>
-                    )}
+                    </div>
                   </div>
+                  
                   <div className="message-content">
                     <ReactMarkdown>
                       {message.content.trim()}
