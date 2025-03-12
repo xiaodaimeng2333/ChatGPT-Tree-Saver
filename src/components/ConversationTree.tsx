@@ -1,4 +1,4 @@
-import { useCallback, useEffect } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { ReactFlow, addEdge, Connection, MiniMap, Controls, Background, BackgroundVariant, NodeTypes } from '@xyflow/react';
 import { ContextMenu } from './ContextMenu';
 import { LoadingSpinner, ErrorState } from "./LoadingStates";
@@ -38,11 +38,28 @@ const ConversationTree = () => {
     // @ts-ignore - 保留此状态以供其他组件使用
     setIsDebugMode
   } = useConversationTree();
+  
+  // 新增状态：标记当前是否不在 ChatGPT 页面
+  const [isNotChatGptPage, setIsNotChatGptPage] = useState(false);
 
   // Fetch conversation history from Chrome extension
   const fetchConversationData = useCallback(async () => {
     setIsLoading(true);
     try {
+      // 首先检查当前页面是否是 ChatGPT 对话页面
+      const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+      const currentTab = tabs[0];
+      
+      if (!currentTab?.url || !currentTab.url.includes('chatgpt.com/c/')) {
+        console.log('当前页面不是 ChatGPT 对话页面:', currentTab?.url);
+        setIsNotChatGptPage(true);
+        setIsLoading(false);
+        return;
+      }
+      
+      // 页面有效，重置标记
+      setIsNotChatGptPage(false);
+      
       const response = await chrome.runtime.sendMessage({ action: "fetchConversationHistory" });
       if (response.success) {
         setConversationData(response.data);
@@ -56,7 +73,7 @@ const ConversationTree = () => {
     } finally {
       setIsLoading(false);
     }
-  }, [setConversationData, setIsLoading, reactFlowInstance]);
+  }, [setConversationData, setIsLoading, reactFlowInstance, setIsNotChatGptPage]);
 
   // Create nodes and edges when conversation data changes
   useEffect(() => {
@@ -197,6 +214,13 @@ const ConversationTree = () => {
   }, []);
 
   if (isLoading) return <LoadingSpinner />;
+  if (isNotChatGptPage) return (
+    <div className="flex flex-col items-center justify-center h-full w-full p-4 text-center">
+      <div className="text-xl font-bold mb-2">非 ChatGPT 对话页面</div>
+      <p className="text-gray-600 mb-4">请在 ChatGPT 对话页面使用此扩展</p>
+      <p className="text-sm text-gray-500">导航到 chatgpt.com 并打开一个对话</p>
+    </div>
+  );
   if (!conversationData) return <ErrorState />;
 
   return (
