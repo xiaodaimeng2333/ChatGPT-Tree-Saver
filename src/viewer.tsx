@@ -36,6 +36,7 @@ interface ConversationNode {
 
 interface ConversationData {
   mapping: Record<string, ConversationNode>;
+  favorites?: FavoriteMessage[];
 }
 
 const Viewer: React.FC = () => {
@@ -49,6 +50,10 @@ const Viewer: React.FC = () => {
   const [favorites, setFavorites] = useState<FavoriteMessage[]>([]);
   const [nameInputMessageId, setNameInputMessageId] = useState<string | null>(null);
   const [nameInputValue, setNameInputValue] = useState('');
+  // 添加原始数据引用
+  const [originalData, setOriginalData] = useState<ConversationData | null>(null);
+  // 添加原始文件名记录
+  const [originalFileName, setOriginalFileName] = useState<string>('');
   
   const fileInputRef = useRef<HTMLInputElement>(null);
   const chatContainerRef = useRef<HTMLDivElement>(null);
@@ -63,6 +68,8 @@ const Viewer: React.FC = () => {
     const file = event.target.files?.[0];
     if (!file) return;
 
+    // 记录原始文件名
+    setOriginalFileName(file.name);
     console.log('开始处理文件:', file.name, '大小:', file.size, 'bytes');
     setIsLoading(true);
     setError(null);
@@ -77,6 +84,8 @@ const Viewer: React.FC = () => {
         let data;
         try {
           data = JSON.parse(content) as ConversationData;
+          // 将原始数据保存到状态，以便后续保存收藏
+          setOriginalData(data);
           // 将原始 mapping 数据保存到 window 对象中，以便后续使用
           (window as any).originalMapping = data.mapping;
         } catch (parseError: any) {
@@ -88,6 +97,15 @@ const Viewer: React.FC = () => {
         
         console.log('数据解析成功, 标题:', (data as any).title || '无标题');
         console.log('对话节点数量:', Object.keys(data.mapping || {}).length);
+        
+        // 检查是否有保存的收藏信息
+        if (data.favorites && Array.isArray(data.favorites)) {
+          console.log('从文件中恢复收藏信息, 收藏数量:', data.favorites.length);
+          setFavorites(data.favorites);
+        } else {
+          console.log('文件中无收藏信息');
+          setFavorites([]);
+        }
         
         // 处理对话数据
         try {
@@ -561,12 +579,35 @@ const Viewer: React.FC = () => {
 
   // 处理添加收藏按钮点击
   const handleFavoriteClick = (messageId: string) => {
-    setNameInputMessageId(messageId);
-    setNameInputValue('');
-    // 聚焦到输入框
-    setTimeout(() => {
-      nameInputRef.current?.focus();
-    }, 0);
+    // 检查是否已经收藏，如果是则移除收藏
+    const existingFavorite = favorites.find(f => f.messageId === messageId);
+    if (existingFavorite) {
+      // 已收藏，移除
+      setFavorites(prev => {
+        const newFavorites = prev.filter(f => f.messageId !== messageId);
+        // 更新原始数据中的收藏
+        updateOriginalDataFavorites(newFavorites);
+        return newFavorites;
+      });
+      addLog(`已从收藏中移除消息 ${messageId}`);
+    } else {
+      // 未收藏，显示输入框添加收藏
+      setNameInputMessageId(messageId);
+      setNameInputValue('');
+      // 聚焦到输入框
+      setTimeout(() => {
+        nameInputRef.current?.focus();
+      }, 0);
+    }
+  };
+
+  // 更新原始数据中的收藏信息
+  const updateOriginalDataFavorites = (newFavorites: FavoriteMessage[]) => {
+    if (originalData) {
+      // 更新原始数据中的收藏
+      originalData.favorites = newFavorites;
+      console.log('已更新原始数据中的收藏信息, 数量:', newFavorites.length);
+    }
   };
 
   // 处理收藏命名提交
@@ -580,7 +621,12 @@ const Viewer: React.FC = () => {
       messageId: nameInputMessageId
     };
     
-    setFavorites(prev => [...prev, newFavorite]);
+    setFavorites(prev => {
+      const newFavorites = [...prev, newFavorite];
+      // 更新原始数据中的收藏
+      updateOriginalDataFavorites(newFavorites);
+      return newFavorites;
+    });
     setNameInputMessageId(null);
     setNameInputValue('');
     
@@ -698,7 +744,84 @@ const Viewer: React.FC = () => {
   // 取消收藏
   const removeFavorite = (favoriteId: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    setFavorites(prev => prev.filter(f => f.id !== favoriteId));
+    setFavorites(prev => {
+      const newFavorites = prev.filter(f => f.id !== favoriteId);
+      // 更新原始数据中的收藏
+      updateOriginalDataFavorites(newFavorites);
+      return newFavorites;
+    });
+    addLog(`已移除收藏 ${favoriteId}`);
+  };
+
+  // 修改保存对话树函数，使用文件选择器
+  const saveConversation = async () => {
+    if (!originalData) {
+      addLog('没有可保存的对话数据');
+      return;
+    }
+    
+    try {
+      // 确保收藏信息已更新
+      originalData.favorites = favorites;
+      
+      // 将对象转换为 JSON 字符串
+      const jsonString = JSON.stringify(originalData, null, 2);
+      
+      // 检查是否支持 showSaveFilePicker API
+      if ('showSaveFilePicker' in window) {
+        try {
+          // 使用文件系统访问API
+          const fileHandle = await (window as any).showSaveFilePicker({
+            suggestedName: originalFileName || 'chatgpt_conversation.json',
+            types: [{
+              description: 'JSON Files',
+              accept: { 'application/json': ['.json'] },
+            }],
+          });
+          
+          // 创建可写流
+          const writable = await fileHandle.createWritable();
+          // 写入内容
+          await writable.write(jsonString);
+          // 关闭流
+          await writable.close();
+          
+          addLog(`已保存对话树，包含 ${favorites.length} 个收藏`);
+        } catch (err) {
+          if ((err as any).name === 'AbortError') {
+            // 用户取消了保存操作
+            addLog('保存操作已取消');
+          } else {
+            throw err;
+          }
+        }
+      } else {
+        // 降级方案：使用传统的下载方法
+        const blob = new Blob([jsonString], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        
+        // 使用原始文件名
+        const filename = originalFileName || `chatgpt_conversation.json`;
+        
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        
+        // 清理
+        setTimeout(() => {
+          document.body.removeChild(a);
+          URL.revokeObjectURL(url);
+        }, 0);
+        
+        addLog(`已下载对话树到 ${filename}，包含 ${favorites.length} 个收藏`);
+        addLog('注意：由于浏览器限制，文件已下载到您的下载文件夹，需要手动替换原文件。');
+      }
+    } catch (error) {
+      console.error('保存对话树失败:', error);
+      addLog(`保存失败: ${error}`);
+    }
   };
 
   return (
@@ -732,6 +855,13 @@ const Viewer: React.FC = () => {
                 title="导航到层数最多的分支"
               >
                 最长分支
+              </button>
+              <button 
+                onClick={saveConversation} 
+                className="import-btn bg-purple-500"
+                title="保存对话树（可选择保存位置）"
+              >
+                保存
               </button>
             </>
           )}

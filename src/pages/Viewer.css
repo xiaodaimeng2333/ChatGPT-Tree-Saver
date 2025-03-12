@@ -52,6 +52,22 @@
   background-color: #059669;
 }
 
+.import-btn.bg-purple-500 {
+  background-color: #8b5cf6;
+}
+
+.import-btn.bg-purple-500:hover {
+  background-color: #7c3aed;
+}
+
+.import-btn.bg-indigo-500 {
+  background-color: #6366f1;
+}
+
+.import-btn.bg-indigo-500:hover {
+  background-color: #4f46e5;
+}
+
 .hidden {
   display: none !important;
 }
