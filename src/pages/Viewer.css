@@ -68,6 +68,23 @@
   background-color: #4f46e5;
 }
 
+.import-btn.bg-orange-500 {
+  background-color: #f97316;
+}
+
+.import-btn.bg-orange-500:hover {
+  background-color: #ea580c;
+}
+
+.import-btn.bg-gray-400 {
+  background-color: #9ca3af;
+  cursor: not-allowed;
+}
+
+.import-btn.bg-gray-400:hover {
+  background-color: #9ca3af;
+}
+
 .hidden {
   display: none !important;
 }
@@ -567,6 +584,22 @@
 
 .favorite-button.favorited {
   color: #faad14;
+}
+
+.delete-button {
+  background: none;
+  border: none;
+  color: #d9d9d9;
+  font-size: 16px;
+  cursor: pointer;
+  padding: 2px 5px;
+  transition: color 0.2s;
+  line-height: 1;
+  margin-left: 4px;
+}
+
+.delete-button:hover {
+  color: #ff4d4f;
 }
 
 .name-input-container {

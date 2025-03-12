@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import ReactMarkdown from 'react-markdown';
 import './pages/Viewer.css';
 
@@ -39,6 +39,12 @@ interface ConversationData {
   favorites?: FavoriteMessage[];
 }
 
+// 定义历史记录类型
+interface HistoryState {
+  deletedNodesArray: string[]; // 改为数组类型
+  deletedFavorites: FavoriteMessage[]; // 添加被删除的收藏
+}
+
 const Viewer: React.FC = () => {
   const [messages, setMessages] = useState<Record<string, Message>>({});
   const [currentPath, setCurrentPath] = useState<string[]>([]);
@@ -54,6 +60,11 @@ const Viewer: React.FC = () => {
   const [originalData, setOriginalData] = useState<ConversationData | null>(null);
   // 添加原始文件名记录
   const [originalFileName, setOriginalFileName] = useState<string>('');
+  
+  // 修改历史状态管理
+  const [history, setHistory] = useState<HistoryState[]>([]);
+  const [historyIndex, setHistoryIndex] = useState(-1);
+  const [deletedNodes, setDeletedNodes] = useState<Set<string>>(new Set());
   
   const fileInputRef = useRef<HTMLInputElement>(null);
   const chatContainerRef = useRef<HTMLDivElement>(null);
@@ -73,6 +84,11 @@ const Viewer: React.FC = () => {
     console.log('开始处理文件:', file.name, '大小:', file.size, 'bytes');
     setIsLoading(true);
     setError(null);
+    
+    // 重置历史和删除节点状态
+    setHistory([]);
+    setHistoryIndex(-1);
+    setDeletedNodes(new Set());
 
     const reader = new FileReader();
     reader.onload = (e) => {
@@ -577,7 +593,325 @@ const Viewer: React.FC = () => {
     return allPaths;
   };
 
-  // 处理添加收藏按钮点击
+  // 修改deleteNode函数，以正确记录将被删除的节点
+  const deleteNode = (nodeId: string) => {
+    if (!messages[nodeId]) {
+      addLog(`节点 ${nodeId} 不存在`);
+      return;
+    }
+    
+    // 获取要删除的所有节点
+    const nodesToDelete = new Set<string>();
+    
+    // 深度优先搜索收集所有子节点
+    const collectNodesToDelete = (id: string) => {
+      nodesToDelete.add(id);
+      
+      const node = messages[id];
+      if (node && node.children) {
+        for (const childId of node.children) {
+          collectNodesToDelete(childId);
+        }
+      }
+    };
+    
+    collectNodesToDelete(nodeId);
+    
+    // 查找将被删除的收藏
+    const nodesToDeleteArray = Array.from(nodesToDelete);
+    const favoritesToRemove = favorites.filter(fav => nodesToDeleteArray.includes(fav.messageId));
+    
+    // 保存当前状态前，将即将删除的收藏和节点存入历史
+    // 注意：这里只保存本次要删除的节点，而不是全部deletedNodes
+    const prevDeletedNodes = Array.from(deletedNodes);
+    const newHistoryState = {
+      deletedNodesArray: [...prevDeletedNodes],
+      deletedFavorites: [] // 初始化为空数组
+    };
+    
+    // 如果我们在历史记录中间进行了修改，则删除之后的历史
+    const newHistory = history.slice(0, historyIndex + 1);
+    
+    // 添加新状态
+    newHistory.push(newHistoryState);
+    
+    // 如果历史记录过长，则限制其长度
+    const MAX_HISTORY_LENGTH = 30;
+    if (newHistory.length > MAX_HISTORY_LENGTH) {
+      newHistory.shift();
+    }
+    
+    // 更新历史记录
+    setHistory(newHistory);
+    setHistoryIndex(newHistory.length - 1);
+    
+    addLog(`已保存删除前状态到历史记录 #${newHistory.length - 1}`);
+    
+    // 更新删除的节点集合
+    setDeletedNodes(prev => {
+      const newSet = new Set(prev);
+      nodesToDelete.forEach(id => newSet.add(id));
+      return newSet;
+    });
+    
+    // 同时删除被删除节点的收藏
+    if (favoritesToRemove.length > 0) {
+      setFavorites(prev => {
+        const newFavorites = prev.filter(fav => !nodesToDeleteArray.includes(fav.messageId));
+        // 更新原始数据中的收藏
+        updateOriginalDataFavorites(newFavorites);
+        return newFavorites;
+      });
+      // 添加被删除的收藏到当前历史记录
+      newHistory[newHistory.length - 1].deletedFavorites = [...favoritesToRemove];
+      addLog(`删除节点时，同时移除了 ${favoritesToRemove.length} 个相关的收藏`);
+    }
+    
+    // 更新当前路径，排除被删除的节点
+    const newPath = currentPath.filter(id => !nodesToDelete.has(id));
+    
+    // 如果删除了当前路径上的节点，需要寻找替代路径
+    if (newPath.length < currentPath.length) {
+      // 如果删除的是当前路径的节点，重新构建路径
+      if (nodesToDelete.has(nodeId)) {
+        addLog(`删除了当前路径上的节点，正在调整路径...`);
+        
+        // 如果删除的是根节点，则清空路径
+        if (messages[nodeId].parent === undefined) {
+          setCurrentPath([]);
+        } else {
+          // 查找删除节点的父节点在路径中的位置
+          const parentId = messages[nodeId].parent;
+          if (parentId && newPath.includes(parentId)) {
+            // 从父节点往下建立新路径
+            const newPathFromParent = buildPathFromNode(parentId, new Set(nodesToDelete));
+            const parentIndex = newPath.indexOf(parentId);
+            
+            // 合并路径：保留父节点之前的路径，加上从父节点往下的新路径
+            setCurrentPath([...newPath.slice(0, parentIndex + 1), ...newPathFromParent.slice(1)]);
+            addLog(`建立了新路径，从父节点 ${parentId} 开始`);
+          } else {
+            setCurrentPath(newPath);
+          }
+        }
+      } else {
+        setCurrentPath(newPath);
+      }
+    }
+    
+    addLog(`已删除节点 ${nodeId} 及其所有子节点，共 ${nodesToDelete.size} 个节点`);
+  };
+  
+  // 构建从指定节点开始的路径，避开已删除的节点
+  const buildPathFromNode = (startNodeId: string, nodesToAvoid: Set<string>): string[] => {
+    const path = [startNodeId];
+    let currentId = startNodeId;
+    
+    // 从起始节点开始，尝试往下构建路径
+    while (currentId) {
+      const node = messages[currentId];
+      if (!node || node.children.length === 0) {
+        break; // 到达叶子节点
+      }
+      
+      // 找出未被删除的子节点
+      const validChildren = node.children.filter(id => !nodesToAvoid.has(id));
+      
+      if (validChildren.length === 0) {
+        break; // 没有有效的子节点
+      }
+      
+      // 优先选择时间最新的子节点
+      if (validChildren.length === 1) {
+        currentId = validChildren[0];
+      } else {
+        // 多个子节点时，选择时间最靠后的
+        let latestChildId = validChildren[0];
+        let latestTime = 0;
+        
+        for (const childId of validChildren) {
+          const originalNode = (window as any).originalMapping?.[childId];
+          const createTime = originalNode?.message?.create_time || 0;
+          
+          if (createTime > latestTime) {
+            latestTime = createTime;
+            latestChildId = childId;
+          }
+        }
+        
+        currentId = latestChildId;
+      }
+      
+      path.push(currentId);
+    }
+    
+    return path;
+  };
+  
+  // 重写撤销操作以修复恢复逻辑
+  const undo = () => {
+    if (historyIndex > 0) {
+      // 上一个历史状态包含删除操作前的状态
+      const prevState = history[historyIndex - 1];
+      // 当前状态是删除后的状态
+      const currentDeletedNodesSet = new Set(deletedNodes);
+      // 上一个状态的删除节点集合
+      const prevDeletedNodesSet = new Set(prevState.deletedNodesArray);
+      
+      // 找出当前被删除但在之前状态中不存在的节点 - 这些是需要恢复的节点
+      const nodesToRestore = new Set<string>();
+      currentDeletedNodesSet.forEach(nodeId => {
+        if (!prevDeletedNodesSet.has(nodeId)) {
+          nodesToRestore.add(nodeId);
+        }
+      });
+      
+      // 如果没有节点需要恢复，可能是数据问题，直接返回
+      if (nodesToRestore.size === 0) {
+        addLog("没有找到需要恢复的节点，可能有数据错误");
+        return;
+      }
+      
+      addLog(`将恢复 ${nodesToRestore.size} 个节点`);
+      
+      // 恢复收藏 - 直接从历史记录中获取被删除的收藏
+      const deletedFavoritesToRestore = history[historyIndex].deletedFavorites || [];
+      
+      if (deletedFavoritesToRestore.length > 0) {
+        addLog(`将恢复 ${deletedFavoritesToRestore.length} 个收藏`);
+        
+        // 添加回这些收藏
+        setFavorites(prev => {
+          // 检查是否存在重复
+          const existingIds = new Set(prev.map(f => f.id));
+          const uniqueFavoritesToRestore = deletedFavoritesToRestore.filter(f => !existingIds.has(f.id));
+          
+          addLog(`实际恢复了 ${uniqueFavoritesToRestore.length} 个不重复的收藏`);
+          
+          const newFavorites = [...prev, ...uniqueFavoritesToRestore];
+          // 更新原始数据中的收藏
+          updateOriginalDataFavorites(newFavorites);
+          return newFavorites;
+        });
+      }
+      
+      // 先还原为历史状态中的deletedNodes，以便后续能正确构建路径
+      setDeletedNodes(prevDeletedNodesSet);
+      
+      // 更新历史索引
+      setHistoryIndex(historyIndex - 1);
+      
+      // 找出一个要跳转的节点（通常选择第一个恢复的节点）
+      const nodeToFocus = Array.from(nodesToRestore)[0];
+      
+      // 检查是否能找到这个节点
+      if (nodeToFocus && messages[nodeToFocus]) {
+        // 构建一条包含这个恢复节点的路径
+        const newPath = buildPathToMessage(nodeToFocus);
+        
+        if (newPath.length > 0) {
+          // 切换到这条新路径
+          setCurrentPath(newPath);
+          
+          // 延迟滚动到恢复的节点
+          setTimeout(() => {
+            const messageElement = document.getElementById(`message-${nodeToFocus}`);
+            if (messageElement) {
+              messageElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+              messageElement.classList.add('highlight-message');
+              setTimeout(() => {
+                messageElement.classList.remove('highlight-message');
+              }, 2000);
+            }
+          }, 100);
+          
+          addLog(`已切换路径到恢复的节点 ${nodeToFocus}`);
+        } else {
+          addLog(`无法构建到恢复节点 ${nodeToFocus} 的路径`);
+        }
+      } else {
+        // 如果找不到特定节点，尝试重新评估当前路径
+        adjustPathAfterUndo(nodesToRestore);
+      }
+      
+      addLog(`已撤销删除操作到历史记录 #${historyIndex - 1}，恢复了 ${nodesToRestore.size} 个节点`);
+    } else {
+      addLog('没有可撤销的删除操作');
+    }
+  };
+
+  // 检查路径中是否需要调整显示，处理恢复节点后的路径调整
+  const adjustPathAfterUndo = (restoredNodes: Set<string>) => {
+    if (restoredNodes.size === 0) {
+      addLog("没有找到任何已恢复的节点，可能撤销操作出现问题");
+      return;
+    }
+    
+    addLog(`恢复了 ${restoredNodes.size} 个被删除的节点`);
+    
+    // 检查这些恢复的节点是否影响当前路径的显示
+    // 我们不改变路径，只是检查当前路径是否应该显示更多节点
+    let pathChanged = false;
+    
+    // 如果当前路径为空（所有节点都被删除），并且恢复了根节点，重新构建初始路径
+    if (currentPath.length === 0) {
+      // 查找根节点
+      const rootId = Object.keys(messages).find(id => !messages[id].parent);
+      if (rootId && restoredNodes.has(rootId)) {
+        // 重新构建完整路径
+        const newPath = buildPathFromNode(rootId, deletedNodes);
+        if (newPath.length > 0) {
+          addLog(`恢复了根节点，重新构建路径，长度: ${newPath.length}`);
+          setCurrentPath(newPath);
+          pathChanged = true;
+        }
+      }
+    }
+    
+    // 如果恢复了当前路径中缺失的节点，保持当前路径的当前位置
+    if (!pathChanged) {
+      // 我们只记录日志，实际上不需要修改路径，因为节点的显示/隐藏是通过过滤deletedNodes实现的
+      const restoredPathNodes = [...restoredNodes].filter(id => {
+        // 检查这个节点是否应该在当前路径上
+        // 1. 检查它是否有父节点在当前路径上
+        const parent = messages[id]?.parent;
+        const parentInPath = parent && currentPath.includes(parent);
+        
+        // 2. 并且该节点是父节点的唯一子节点或时间最新的子节点
+        if (parentInPath) {
+          const parentNode = messages[parent];
+          // 如果只有一个子节点
+          if (parentNode.children.length === 1) return true;
+          
+          // 多个子节点，检查是否是时间最新的
+          let latestChildId = '';
+          let latestTime = 0;
+          
+          for (const childId of parentNode.children) {
+            if (deletedNodes.has(childId)) continue; // 跳过仍然被删除的节点
+            
+            const originalNode = (window as any).originalMapping?.[childId];
+            const createTime = originalNode?.message?.create_time || 0;
+            
+            if (createTime > latestTime) {
+              latestTime = createTime;
+              latestChildId = childId;
+            }
+          }
+          
+          return id === latestChildId;
+        }
+        
+        return false;
+      });
+      
+      if (restoredPathNodes.length > 0) {
+        addLog(`恢复的节点中，有 ${restoredPathNodes.length} 个可能影响当前路径显示`);
+      }
+    }
+  };
+
+  // 收藏相关功能应该不受撤销/恢复影响
   const handleFavoriteClick = (messageId: string) => {
     // 检查是否已经收藏，如果是则移除收藏
     const existingFavorite = favorites.find(f => f.messageId === messageId);
@@ -744,6 +1078,7 @@ const Viewer: React.FC = () => {
   // 取消收藏
   const removeFavorite = (favoriteId: string, e: React.MouseEvent) => {
     e.stopPropagation();
+    
     setFavorites(prev => {
       const newFavorites = prev.filter(f => f.id !== favoriteId);
       // 更新原始数据中的收藏
@@ -824,6 +1159,19 @@ const Viewer: React.FC = () => {
     }
   };
 
+  // 在组件初始化时添加这段代码
+  useEffect(() => {
+    // 当消息首次加载完成后，保存初始状态
+    if (Object.keys(messages).length > 0 && history.length === 0) {
+      const initialState: HistoryState = {
+        deletedNodesArray: [],
+        deletedFavorites: []
+      };
+      setHistory([initialState]);
+      setHistoryIndex(0);
+    }
+  }, [messages, history.length]);
+
   return (
     <div className="viewer-container">
       <div className="header">
@@ -862,6 +1210,14 @@ const Viewer: React.FC = () => {
                 title="保存对话树（可选择保存位置）"
               >
                 保存
+              </button>
+              <button 
+                onClick={undo} 
+                className={`import-btn ${historyIndex > 0 ? 'bg-orange-500' : 'bg-gray-400'}`}
+                disabled={historyIndex <= 0}
+                title="撤销上一次删除操作"
+              >
+                撤销删除
               </button>
             </>
           )}
@@ -955,7 +1311,7 @@ const Viewer: React.FC = () => {
         <div className="chat-container" ref={chatContainerRef}>
           {currentPath.map((messageId, index) => {
             const message = messages[messageId];
-            if (message.hidden) return null;
+            if (message.hidden || deletedNodes.has(messageId)) return null;
 
             // 特别处理：跳过根节点和系统消息
             if (index < 2 && (message.role === 'system' || message.role === 'unknown') && !message.content.trim()) {
@@ -964,7 +1320,7 @@ const Viewer: React.FC = () => {
             
             const isUser = message.role === 'user';
             const parent = message.parent;
-            const hasSiblings = parent && messages[parent]?.children.filter(childId => !messages[childId].hidden).length > 1;
+            const hasSiblings = parent && messages[parent]?.children.filter(childId => !messages[childId].hidden && !deletedNodes.has(childId)).length > 1;
             const isFavorite = favorites.some(f => f.messageId === messageId);
             
             return (
@@ -982,20 +1338,22 @@ const Viewer: React.FC = () => {
                     <div className="message-actions">
                       {hasSiblings && (
                         <div className="branch-buttons">
-                          {messages[parent].children.filter(childId => !messages[childId].hidden).map((siblingId, siblingIndex) => {
-                            const isSelected = currentPath.includes(siblingId);
-                            const preview = getMessagePreview(siblingId);
-                            const siblingRole = messages[siblingId].role;
-                            return (
-                              <button
-                                key={siblingId}
-                                className={`branch-button ${isSelected ? 'selected' : ''} ${siblingRole}`}
-                                onClick={() => handleSwitchBranch(parent, siblingId)}
-                                title={preview}
-                              >
-                                {siblingRole === 'user' ? `输入 ${siblingIndex + 1}` : `回复 ${siblingIndex + 1}`}
-                              </button>
-                            );
+                          {messages[parent].children
+                            .filter(childId => !messages[childId].hidden && !deletedNodes.has(childId))
+                            .map((siblingId, siblingIndex) => {
+                              const isSelected = currentPath.includes(siblingId);
+                              const preview = getMessagePreview(siblingId);
+                              const siblingRole = messages[siblingId].role;
+                              return (
+                                <button
+                                  key={siblingId}
+                                  className={`branch-button ${isSelected ? 'selected' : ''} ${siblingRole}`}
+                                  onClick={() => handleSwitchBranch(parent, siblingId)}
+                                  title={preview}
+                                >
+                                  {siblingRole === 'user' ? `输入 ${siblingIndex + 1}` : `回复 ${siblingIndex + 1}`}
+                                </button>
+                              );
                           })}
                         </div>
                       )}
@@ -1032,6 +1390,15 @@ const Viewer: React.FC = () => {
                             </button>
                           </form>
                         )}
+                        
+                        {/* 删除按钮 */}
+                        <button 
+                          className="delete-button"
+                          onClick={() => deleteNode(messageId)}
+                          title="删除此消息及其所有子消息"
+                        >
+                          🗑️
+                        </button>
                       </div>
                     </div>
                   </div>
