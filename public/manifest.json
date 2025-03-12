@@ -29,7 +29,8 @@
         "webRequest",
         "scripting",
         "activeTab",
-        "sidePanel"
+        "sidePanel",
+        "webNavigation"
     ],
     "host_permissions": [
         "https://chatgpt.com/backend-api/*"

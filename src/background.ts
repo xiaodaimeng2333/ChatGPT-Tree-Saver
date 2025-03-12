@@ -595,6 +595,16 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
   }
 });
 
+// 添加 webNavigation 监听器，更可靠地检测单页应用中的 URL 变化
+chrome.webNavigation.onHistoryStateUpdated.addListener((details) => {
+  if (details.url.includes('chatgpt.com/c/')) {
+    console.log('History state updated, URL:', details.url);
+    chrome.tabs.sendMessage(details.tabId, { action: "urlChanged", url: details.url }).catch(err => {
+      console.log('Error sending message to content script:', err);
+    });
+  }
+});
+
 chrome.sidePanel
   .setPanelBehavior({ openPanelOnActionClick: true })
   .catch((error) => console.error(error));

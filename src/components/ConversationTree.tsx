@@ -83,23 +83,50 @@ const ConversationTree = () => {
 
   // Add another useEffect to handle initial data fetch and URL changes
   useEffect(() => {
+    console.log('Setting up URL change listeners and initial data fetch');
     // 初始加载数据
     fetchConversationData();
 
+    // 上次检查的 URL
+    let lastUrl = '';
+
     // 监听来自 background.js 的消息
     const handleMessage = (message: any) => {
+      console.log('Received message:', message);
       if (message.action === "urlChanged") {
         console.log('Received URL change notification:', message.url);
         fetchConversationData();
       }
+      // 返回 true 以保持消息通道开放
+      return true;
     };
 
     // 添加消息监听器
     chrome.runtime.onMessage.addListener(handleMessage);
+    console.log('Message listener added');
+
+    // 备用方案：定期检查 URL 变化
+    const checkUrlInterval = setInterval(async () => {
+      try {
+        const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+        const currentTab = tabs[0];
+        if (currentTab?.url && currentTab.url.includes('chatgpt.com/c/')) {
+          if (lastUrl && lastUrl !== currentTab.url) {
+            console.log('URL changed (detected by polling):', currentTab.url);
+            fetchConversationData();
+          }
+          lastUrl = currentTab.url;
+        }
+      } catch (error) {
+        console.error('Error checking URL:', error);
+      }
+    }, 2000); // 每 2 秒检查一次
 
     // 清理函数
     return () => {
+      console.log('Cleaning up URL change listeners');
       chrome.runtime.onMessage.removeListener(handleMessage);
+      clearInterval(checkUrlInterval);
     };
   }, [fetchConversationData]);
 
