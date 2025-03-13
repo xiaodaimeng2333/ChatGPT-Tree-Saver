@@ -10,6 +10,7 @@ import { RefreshButton } from './RefreshButton';
 import { SaveButton } from './SaveButton';
 import { ViewerButton } from './ViewerButton';
 import { CustomNode } from "./CustomNode";
+import { FavoritesList } from './FavoritesList';
 import '@xyflow/react/dist/style.css';
 
 
@@ -240,6 +241,7 @@ const ConversationTree = () => {
 
   return (
     <div className="w-full h-full" style={{ height: '100%', width: '100%' }}>
+      <FavoritesList onRefresh={() => fetchConversationData()} />
       <RefreshButton onClick={fetchConversationData} />
       <SaveButton onClick={handleSave} />
       <ViewerButton onClick={handleOpenViewer} />
