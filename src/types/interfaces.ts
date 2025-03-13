@@ -10,6 +10,8 @@ export interface Content {
     repository?: string | null;        
     repo_summary?: string | null;       
     parts?: string[] | null;
+    user_instructions?: string;
+    user_profile?: string;
 }
 
 export interface MetaData {
@@ -50,7 +52,16 @@ export interface Message {
 export interface Node {
     position?: { x: number; y: number };
     id: string;
-    data?: { label: string; role?: string; timestamp?: number, id?: string, hidden?: boolean, contentType?: string, model_slug?: string};
+    data?: { 
+        label: string; 
+        role?: string; 
+        timestamp?: number, 
+        id?: string, 
+        hidden?: boolean, 
+        contentType?: string, 
+        model_slug?: string,
+        visually_hidden?: boolean
+    };
     message: Message | null;
     parent: string | null;
     children: string[];

@@ -11,6 +11,16 @@ import { nodeWidth, nodeHeight } from "../constants/constants"
 export const CustomNode = ({ data }: { data: any }) => {   
     const [isExpanded, setIsExpanded] = useState(false);
   
+    // 如果节点被标记为visually_hidden，则不渲染
+    if (data.visually_hidden) {
+      return (
+        <>
+          <Handle type="target" position={Position.Top} className="w-2 h-2" style={{ opacity: 0 }} />
+          <Handle type="source" position={Position.Bottom} className="w-2 h-2" style={{ opacity: 0 }} />
+        </>
+      );
+    }
+  
     return (
       <>
         <div 

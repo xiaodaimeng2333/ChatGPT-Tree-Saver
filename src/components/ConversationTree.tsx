@@ -80,6 +80,7 @@ const ConversationTree = () => {
     if (!conversationData) {
       return;
     }
+    
     createNodesInOrder(conversationData, checkNodes)
       .then(({ nodes: newNodes, edges: newEdges }) => {
         setNodes(newNodes.map(node => ({
@@ -93,7 +94,8 @@ const ConversationTree = () => {
         setIsLoading(false);
       })
       .catch(error => {
-        console.error(error);
+        // 直接将错误传递给浏览器，这样会在Chrome的错误提示中显示
+        setTimeout(() => { throw error; }, 0);
         setIsLoading(false);
       });
   }, [conversationData, isDebugMode]);

@@ -1,0 +1,3 @@
+  main          [m 395f09c [[34morigin/main[m] 删除错误创建的文件
+* [32mnew           [m 34b09cd [[34morigin/new[m] 在 Viewer 组件中新增历史记录管理功能，支持删除节点时记录删除状态并实现撤销操作。优化路径构建逻辑，确保在节点删除和恢复时正确更新当前路径。更新样式以支持删除按钮的展示，增强用户体验。
+  recover-branch[m b8d154d [[34morigin/recover-branch[m] recover
