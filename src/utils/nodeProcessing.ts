@@ -3,9 +3,15 @@ import { Node } from '../types/interfaces';
 
 // Traverses up the node tree to find the first parent with valid user content.
 // Also cleans up the parent-child relationships by removing invalid intermediate nodes.
-export const findFirstContentParent = (node: Node, mapping: Record<string, Node>): Node | null => {
+export const findFirstContentParent = (node: Node | null | undefined, mapping: Record<string, Node>): Node | null => {
     try {
         if (!node) {
+            return null;
+        }
+        
+        // 确保mapping是有效的
+        if (!mapping || typeof mapping !== 'object') {
+            console.warn('无效的mapping对象');
             return null;
         }
         
@@ -84,16 +90,22 @@ export const findFirstContentParent = (node: Node, mapping: Record<string, Node>
 // Validates if a node contains meaningful content and is from a supported author type
 
 export const isValidNode = (node: Node): boolean => {
-    // 检查节点是否有内容
-    const hasContent = node.message?.content?.parts?.[0] || 
-                      (node.message?.content?.content_type === 'user_editable_context' && 
-                       node.message?.content?.user_instructions);
-    
-    // 不再跳过user_editable_context类型的节点
-    return !!(hasContent &&
-        node.message?.author?.role !== 'system' && 
-        node.message?.author?.role !== 'tool' &&
-        node.message?.recipient === 'all');
+    try {
+        // 检查节点是否有内容
+        const hasContent = node.message?.content?.parts?.[0] || 
+                          (node.message?.content?.content_type === 'user_editable_context' && 
+                           node.message?.content?.user_instructions);
+        
+        // 不再跳过user_editable_context类型的节点
+        return !!(hasContent &&
+            node.message?.author?.role !== 'system' && 
+            node.message?.author?.role !== 'tool' &&
+            node.message?.recipient === 'all');
+    } catch (error) {
+        // 如果出现任何错误，返回false而不是崩溃
+        console.warn(`检查节点有效性时出错 [节点ID: ${node?.id}]:`, error);
+        return false;
+    }
 };
 
 
@@ -102,15 +114,15 @@ export const isValidNode = (node: Node): boolean => {
 export const getNodeContent = (node: Node): string => {
     try {
         if (!node) {
-            throw new Error('节点为空');
+            return 'Empty node';
         }
         
         if (!node.message) {
-            throw new Error(`节点消息为空 [节点ID: ${node.id}]`);
+            return `Node with empty message [ID: ${node.id}]`;
         }
         
         if (!node.message.content) {
-            throw new Error(`节点内容为空 [节点ID: ${node.id}]`);
+            return `Node with empty content [ID: ${node.id}]`;
         }
         
         const contentType = node.message.content.content_type;
@@ -133,9 +145,14 @@ export const getNodeContent = (node: Node): string => {
             if (textPart) return textPart;
         }
         
-        return 'No text provided';
+        return `No text content found [ID: ${node.id}, Type: ${contentType || 'unknown'}]`;
     } catch (error: any) {
-        // 重新抛出错误，让调用者处理
-        throw error;
+        // 记录错误但返回一个默认值，而不是抛出错误
+        console.warn('获取节点内容时出错:', {
+            nodeId: node?.id,
+            contentType: node?.message?.content?.content_type,
+            error: error.message
+        });
+        return `Error getting content: ${error.message}`;
     }
 };
