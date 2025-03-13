@@ -256,9 +256,10 @@ async function editMessage(messageId: string, message: string) {
 
         // Click edit button
         const buttons = buttonDiv.querySelectorAll("button");
-        const editButton = Array.from(buttons).find(button => 
-          button.getAttribute('aria-label') === "Edit message"
-        );
+        const editButton = Array.from(buttons).find(button => {
+          const ariaLabel = button.getAttribute('aria-label');
+          return ariaLabel === "Edit message" || ariaLabel === "编辑消息";
+        });
         if (!editButton) throw new Error('Edit button not found');
         
         editButton.click();
@@ -361,9 +362,10 @@ async function respondToMessage(childrenIds: string[], message: string) {
 
         // Click edit button
         const buttons = buttonDiv.querySelectorAll("button");
-        const editButton = Array.from(buttons).find(button => 
-          button.getAttribute('aria-label') === "Edit message"
-        );
+        const editButton = Array.from(buttons).find(button => {
+          const ariaLabel = button.getAttribute('aria-label');
+          return ariaLabel === "Edit message" || ariaLabel === "编辑消息";
+        });
         if (!editButton) throw new Error('Edit button not found');
 
         editButton.click();
@@ -496,8 +498,8 @@ async function selectBranch(stepsToTake: any[]) {
               const buttonIndex = Array.from(buttons).findIndex(button => {
                 const ariaLabel = button.getAttribute('aria-label');
                 return step.stepsLeft > 0 ? 
-                  ariaLabel === "Previous response" :
-                  ariaLabel === "Next response";
+                  (ariaLabel === "Previous response" || ariaLabel === "上一回复") :
+                  (ariaLabel === "Next response" || ariaLabel === "下一回复");
               });
 
               if (buttonIndex === -1) {
