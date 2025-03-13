@@ -155,7 +155,22 @@ async function fetchConversationHistory() {
     }
     
     const url = new URL(currentTab.url);
-    const conversationId = url.pathname.split('/').pop();
+    const pathParts = url.pathname.split('/');
+    
+    // 确定对话ID
+    let conversationId = '';
+    
+    if (url.pathname.includes('/c/')) {
+      conversationId = pathParts[pathParts.indexOf('c') + 1];
+    } else if (url.pathname.includes('/g/')) {
+      conversationId = pathParts[pathParts.indexOf('g') + 1];
+    } else {
+      throw new Error('Unsupported conversation URL format');
+    }
+    
+    if (!conversationId) {
+      throw new Error('Could not extract conversation ID from URL');
+    }
 
     const headersList = new Headers();
     headers.forEach(header => {

@@ -36,7 +36,7 @@
         "https://chatgpt.com/backend-api/*"
     ],
     "content_security_policy": {
-        "extension_pages": "script-src 'self'; object-src 'self';"
+        "extension_pages": "script-src 'self'; object-src 'self'; img-src 'self' https://cdn.01i.uk;"
     },
     "web_accessible_resources": [{
         "resources": ["logo16.png", "logo48.png", "logo128.png", "viewer.html", "viewer-*.js", "index-*.js", "index-*.css"],

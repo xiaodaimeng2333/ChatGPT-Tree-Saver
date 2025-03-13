@@ -50,7 +50,13 @@ const ConversationTree = () => {
       const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
       const currentTab = tabs[0];
       
-      if (!currentTab?.url || !currentTab.url.includes('chatgpt.com/c/')) {
+      // 检查URL是否包含chatgpt.com/c/（普通对话）或chatgpt.com/g/（GPTs对话）
+      const isChatGptPage = currentTab?.url && (
+        currentTab.url.includes('chatgpt.com/c/') || 
+        currentTab.url.includes('chatgpt.com/g/')
+      );
+      
+      if (!isChatGptPage) {
         console.log('当前页面不是 ChatGPT 对话页面:', currentTab?.url);
         setIsNotChatGptPage(true);
         setIsLoading(false);
@@ -129,12 +135,19 @@ const ConversationTree = () => {
       try {
         const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
         const currentTab = tabs[0];
-        if (currentTab?.url && currentTab.url.includes('chatgpt.com/c/')) {
+        
+        // 检查URL是否包含chatgpt.com/c/（普通对话）或chatgpt.com/g/（GPTs对话）
+        const isChatGptPage = currentTab?.url && (
+          currentTab.url.includes('chatgpt.com/c/') || 
+          currentTab.url.includes('chatgpt.com/g/')
+        );
+        
+        if (isChatGptPage) {
           if (lastUrl && lastUrl !== currentTab.url) {
             console.log('URL changed (detected by polling):', currentTab.url);
             fetchConversationData();
           }
-          lastUrl = currentTab.url;
+          lastUrl = currentTab.url || '';
         }
       } catch (error) {
         console.error('Error checking URL:', error);
