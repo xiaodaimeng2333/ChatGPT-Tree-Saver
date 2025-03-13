@@ -1,5 +1,4 @@
 import { useState, useEffect } from 'react';
-import { calculateSteps } from '../utils/nodeNavigation';
 
 interface FavoriteNode {
   id: string;
@@ -11,10 +10,10 @@ interface FavoriteNode {
 
 interface FavoritesListProps {
   onRefresh?: () => void;
-  nodes?: any[]; // 添加 nodes 属性
+  onNodeClick?: (messageId: string) => any[];
 }
 
-export const FavoritesList = ({ onRefresh, nodes = [] }: FavoritesListProps) => {
+export const FavoritesList = ({ onRefresh, onNodeClick }: FavoritesListProps) => {
   const [favorites, setFavorites] = useState<Record<string, FavoriteNode>>({});
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -160,10 +159,40 @@ export const FavoritesList = ({ onRefresh, nodes = [] }: FavoritesListProps) => 
     }
   };
 
-  // 滚动到指定节点并选择它
+  // 滚动到指定节点
   const scrollToNode = async (nodeId: string) => {
     try {
-      // 1. 高亮显示节点
+      // 如果提供了 onNodeClick 函数，使用它来执行节点选择
+      if (onNodeClick) {
+        const steps = onNodeClick(nodeId);
+        if (steps && steps.length > 0) {
+          // 执行导航步骤
+          const execResponse = await chrome.runtime.sendMessage({ 
+            action: "executeSteps", 
+            steps: steps,
+            requireCompletion: true
+          });
+
+          if (!execResponse.completed) {
+            throw new Error('Background operation did not complete successfully');
+          }
+
+          // 刷新节点
+          if (onRefresh) {
+            onRefresh();
+          }
+
+          // 滚动到目标节点
+          await chrome.runtime.sendMessage({ 
+            action: "goToTarget", 
+            targetId: nodeId 
+          });
+          
+          return; // 如果成功执行了节点选择，就不需要执行下面的代码
+        }
+      }
+      
+      // 如果没有提供 onNodeClick 函数或者执行失败，回退到原来的滚动方法
       const nodeElement = document.querySelector(`[data-id="${nodeId}"]`);
       if (nodeElement) {
         nodeElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -174,51 +203,25 @@ export const FavoritesList = ({ onRefresh, nodes = [] }: FavoritesListProps) => 
           nodeElement.classList.remove('highlight-node');
         }, 2000);
       }
-      
-      // 2. 选择节点（类似右键菜单的 Select 功能）
-      // 获取节点的步骤
-      const steps = calculateStepsToNode(nodeId);
-      if (!steps || steps.length === 0) return;
-      
-      // 执行步骤
-      try {
-        const execResponse = await chrome.runtime.sendMessage({ 
-          action: "executeSteps", 
-          steps: steps,
-          requireCompletion: true
-        });
-
-        if (!execResponse.completed) {
-          throw new Error('Background operation did not complete successfully');
-        }
-
-        // 刷新节点
-        if (onRefresh) {
-          onRefresh();
-        }
-        
-        // 跳转到目标节点
-        await chrome.runtime.sendMessage({ 
-          action: "goToTarget", 
-          targetId: nodeId 
-        });
-      } catch (error) {
-        console.error('Error executing steps:', error);
-      }
     } catch (error) {
-      console.error('Error scrolling to node:', error);
+      console.error('Error navigating to node:', error);
+      
+      // 如果导航失败，尝试使用原来的滚动方法
+      try {
+        const nodeElement = document.querySelector(`[data-id="${nodeId}"]`);
+        if (nodeElement) {
+          nodeElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          
+          // 高亮显示节点
+          nodeElement.classList.add('highlight-node');
+          setTimeout(() => {
+            nodeElement.classList.remove('highlight-node');
+          }, 2000);
+        }
+      } catch (fallbackError) {
+        console.error('Error scrolling to node:', fallbackError);
+      }
     }
-  };
-  
-  // 计算到达指定节点的步骤
-  const calculateStepsToNode = (nodeId: string) => {
-    if (!nodes || nodes.length === 0) {
-      // 如果没有节点数据，使用简单实现
-      return [{ nodeId, action: 'select' }];
-    }
-    
-    // 使用 calculateSteps 函数计算步骤
-    return calculateSteps(nodes, nodeId);
   };
 
   // 渲染收藏列表

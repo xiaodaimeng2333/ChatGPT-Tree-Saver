@@ -241,7 +241,10 @@ const ConversationTree = () => {
 
   return (
     <div className="w-full h-full" style={{ height: '100%', width: '100%' }}>
-      <FavoritesList onRefresh={() => fetchConversationData()} nodes={nodes} />
+      <FavoritesList 
+        onRefresh={() => fetchConversationData()} 
+        onNodeClick={handleNodeClick}
+      />
       <RefreshButton onClick={fetchConversationData} />
       <SaveButton onClick={handleSave} />
       <ViewerButton onClick={handleOpenViewer} />
