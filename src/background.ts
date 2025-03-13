@@ -290,7 +290,10 @@ async function editMessage(messageId: string, message: string) {
         while (currentElement && iterations < 10) {
           const buttons = currentElement.querySelectorAll('button');
           sendButton = Array.from(buttons).find(
-            button => button.textContent?.trim() === 'Send'
+            button => {
+              const text = button.textContent?.trim();
+              return text === 'Send' || text === '发送';
+            }
           ) as HTMLButtonElement || null;
           if (sendButton) break;
           
@@ -396,7 +399,10 @@ async function respondToMessage(childrenIds: string[], message: string) {
         while (currentElement && iterations < 10) {
           const buttons = currentElement.querySelectorAll('button');
           sendButton = Array.from(buttons).find(
-            button => button.textContent?.trim() === 'Send'
+            button => {
+              const text = button.textContent?.trim();
+              return text === 'Send' || text === '发送';
+            }
           ) as HTMLButtonElement || null;
           if (sendButton) break;
 
