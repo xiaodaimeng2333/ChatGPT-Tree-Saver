@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { calculateSteps } from '../utils/nodeNavigation';
 
 interface FavoriteNode {
   id: string;
@@ -10,9 +11,10 @@ interface FavoriteNode {
 
 interface FavoritesListProps {
   onRefresh?: () => void;
+  nodes?: any[]; // 添加 nodes 属性
 }
 
-export const FavoritesList = ({ onRefresh }: FavoritesListProps) => {
+export const FavoritesList = ({ onRefresh, nodes = [] }: FavoritesListProps) => {
   const [favorites, setFavorites] = useState<Record<string, FavoriteNode>>({});
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -158,9 +160,10 @@ export const FavoritesList = ({ onRefresh }: FavoritesListProps) => {
     }
   };
 
-  // 滚动到指定节点
-  const scrollToNode = (nodeId: string) => {
+  // 滚动到指定节点并选择它
+  const scrollToNode = async (nodeId: string) => {
     try {
+      // 1. 高亮显示节点
       const nodeElement = document.querySelector(`[data-id="${nodeId}"]`);
       if (nodeElement) {
         nodeElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -171,9 +174,51 @@ export const FavoritesList = ({ onRefresh }: FavoritesListProps) => {
           nodeElement.classList.remove('highlight-node');
         }, 2000);
       }
+      
+      // 2. 选择节点（类似右键菜单的 Select 功能）
+      // 获取节点的步骤
+      const steps = calculateStepsToNode(nodeId);
+      if (!steps || steps.length === 0) return;
+      
+      // 执行步骤
+      try {
+        const execResponse = await chrome.runtime.sendMessage({ 
+          action: "executeSteps", 
+          steps: steps,
+          requireCompletion: true
+        });
+
+        if (!execResponse.completed) {
+          throw new Error('Background operation did not complete successfully');
+        }
+
+        // 刷新节点
+        if (onRefresh) {
+          onRefresh();
+        }
+        
+        // 跳转到目标节点
+        await chrome.runtime.sendMessage({ 
+          action: "goToTarget", 
+          targetId: nodeId 
+        });
+      } catch (error) {
+        console.error('Error executing steps:', error);
+      }
     } catch (error) {
       console.error('Error scrolling to node:', error);
     }
+  };
+  
+  // 计算到达指定节点的步骤
+  const calculateStepsToNode = (nodeId: string) => {
+    if (!nodes || nodes.length === 0) {
+      // 如果没有节点数据，使用简单实现
+      return [{ nodeId, action: 'select' }];
+    }
+    
+    // 使用 calculateSteps 函数计算步骤
+    return calculateSteps(nodes, nodeId);
   };
 
   // 渲染收藏列表
