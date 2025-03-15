@@ -1,4 +1,3 @@
-// Function to save headers to chrome.storage
 function saveRequestHeaders(headers: chrome.webRequest.HttpHeader[]) {
   chrome.storage.session.set({ storedRequestHeaders: headers }, () => {
     if (chrome.runtime.lastError) {
@@ -7,7 +6,6 @@ function saveRequestHeaders(headers: chrome.webRequest.HttpHeader[]) {
   });
 }
 
-// Function to load headers from chrome.storage
 function loadRequestHeaders(): Promise<chrome.webRequest.HttpHeader[] | null> {
   return new Promise((resolve) => {
     chrome.storage.session.get(['storedRequestHeaders'], (result) => {
@@ -43,7 +41,6 @@ function captureHeaders() {
   );
 }
 
-// Add message listener to handle requests for headers and conversation history
 chrome.runtime.onMessage.addListener(
   (request, _sender, sendResponse) => {
     if (request.action === "getHeaders") {
@@ -128,7 +125,6 @@ chrome.runtime.onMessage.addListener(
   }
 );
 
-// fetch the conversation history
 async function fetchConversationHistory() {
   let headers = null;
   for (let i = 0; i < 3; i++) {
@@ -145,7 +141,6 @@ async function fetchConversationHistory() {
   }
 
   try {
-    // Use chrome.tabs.query instead of getCurrent
     const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
     const currentTab = tabs[0];
     
@@ -157,7 +152,6 @@ async function fetchConversationHistory() {
     const url = new URL(currentTab.url);
     const pathParts = url.pathname.split('/');
     
-    // 确定对话ID
     let conversationId = '';
     
     if (url.pathname.includes('/c/')) {
@@ -195,7 +189,6 @@ async function fetchConversationHistory() {
 
 async function checkNodesExistence(nodeIds: string[]) {
   try {
-    // return true if the node does not exist in the DOM (thus hidden)
     const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
     const currentTab = tabs[0];
     const results = await chrome.scripting.executeScript({
@@ -220,7 +213,6 @@ async function editMessage(messageId: string, message: string) {
   await chrome.scripting.executeScript({
     target: { tabId: currentTab.id ?? 0 },
     func: (messageId, message) => {
-      // Helper function to wait for DOM changes
       const waitForDomChange = (element: Element, timeout = 2000): Promise<void> => {
         return new Promise((resolve, reject) => {
           const timeoutId = setTimeout(() => {
@@ -232,7 +224,6 @@ async function editMessage(messageId: string, message: string) {
             if (mutations.length > 0) {
               clearTimeout(timeoutId);
               observer.disconnect();
-              // Give a small buffer for the DOM to settle
               setTimeout(resolve, 50);
             }
           });
@@ -246,7 +237,6 @@ async function editMessage(messageId: string, message: string) {
         });
       };
 
-      // Convert the callback hell into async/await
       const performEdit = async () => {
         const element = document.querySelector(`[data-message-id="${messageId}"]`);
         if (!element) throw new Error('Message element not found');
@@ -254,7 +244,6 @@ async function editMessage(messageId: string, message: string) {
         const buttonDiv = element.parentElement?.parentElement;
         if (!buttonDiv) throw new Error('Button container not found');
 
-        // Click edit button
         const buttons = buttonDiv.querySelectorAll("button");
         const editButton = Array.from(buttons).find(button => {
           const ariaLabel = button.getAttribute('aria-label');
@@ -265,7 +254,6 @@ async function editMessage(messageId: string, message: string) {
         editButton.click();
         await waitForDomChange(buttonDiv);
 
-        // Set textarea value
         let textArea = buttonDiv.querySelector("textarea");
         let attempts = 0;
         const maxAttempts = 5;
@@ -282,7 +270,6 @@ async function editMessage(messageId: string, message: string) {
         textArea.dispatchEvent(new Event('input', { bubbles: true }));
         element.scrollIntoView({ behavior: 'smooth', block: 'center' });
 
-        // Find and click send button
         let currentElement: Element | null = textArea;
         let sendButton: HTMLButtonElement | null = null;
         let iterations = 0;
@@ -304,11 +291,9 @@ async function editMessage(messageId: string, message: string) {
         if (!sendButton) throw new Error('Send button not found');
         sendButton.click();
         
-        // Wait for final update after sending
         await waitForDomChange(buttonDiv, 2000);
       };
 
-      // Execute the async function and handle errors
       return performEdit().catch(error => {
         console.error('Error in editMessage:', error);
         throw error;
@@ -326,7 +311,6 @@ async function respondToMessage(childrenIds: string[], message: string) {
   await chrome.scripting.executeScript({
     target: { tabId: currentTab.id ?? 0 },
     func: (childrenIds, message: string) => {
-      // Helper function to wait for DOM changes
       const waitForDomChange = (element: Element, timeout = 2000): Promise<void> => {
         return new Promise((resolve, reject) => {
           const timeoutId = setTimeout(() => {
@@ -352,7 +336,6 @@ async function respondToMessage(childrenIds: string[], message: string) {
       };
 
       const performResponse = async () => {
-        // Find the first visible message element
         let element = null;
         for (const messageId of childrenIds) {
           element = document.querySelector(`[data-message-id="${messageId}"]`);
@@ -363,7 +346,6 @@ async function respondToMessage(childrenIds: string[], message: string) {
         const buttonDiv = element.parentElement?.parentElement;
         if (!buttonDiv) throw new Error('Button container not found');
 
-        // Click edit button
         const buttons = buttonDiv.querySelectorAll("button");
         const editButton = Array.from(buttons).find(button => {
           const ariaLabel = button.getAttribute('aria-label');
@@ -374,7 +356,6 @@ async function respondToMessage(childrenIds: string[], message: string) {
         editButton.click();
         await waitForDomChange(buttonDiv);
 
-        // Set textarea value
         let textArea = buttonDiv.querySelector("textarea");
         let attempts = 0;
         const maxAttempts = 5;
@@ -391,7 +372,6 @@ async function respondToMessage(childrenIds: string[], message: string) {
         textArea.dispatchEvent(new Event('input', { bubbles: true }));
         element.scrollIntoView({ behavior: 'smooth', block: 'center' });
 
-        // Find and click send button
         let currentElement: Element | null = textArea;
         let sendButton: HTMLButtonElement | null = null;
         let iterations = 0;
@@ -413,11 +393,9 @@ async function respondToMessage(childrenIds: string[], message: string) {
         if (!sendButton) throw new Error('Send button not found');
         sendButton.click();
 
-        // Wait for final update after sending
         await waitForDomChange(buttonDiv, 2000);
       };
 
-      // Execute the async function and handle errors
       return performResponse().catch(error => {
         console.error('Error in respondToMessage:', error);
         throw error;
@@ -428,34 +406,47 @@ async function respondToMessage(childrenIds: string[], message: string) {
 }
 
 async function selectBranch(stepsToTake: any[]) {
+  console.log('【调试】background.ts - selectBranch 开始执行，步骤数量:', stepsToTake.length);
+  console.log('【调试】步骤详情:', JSON.stringify(stepsToTake, null, 2));
+  
   try {
     if (!Array.isArray(stepsToTake)) {
+      console.error('【调试】stepsToTake 不是数组');
       throw new Error('stepsToTake must be an array');
     }
 
     const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+    console.log('【调试】当前活动标签页:', tabs.length > 0 ? tabs[0].url : '无');
+    
     if (!tabs || tabs.length === 0) {
+      console.error('【调试】未找到活动标签页');
       throw new Error('No active tab found');
     }
     const currentTab = tabs[0];
     if (!currentTab.id) {
+      console.error('【调试】当前标签页没有 ID');
       throw new Error('Current tab has no ID');
     }
 
+    console.log('【调试】开始执行脚本，标签页 ID:', currentTab.id);
     await chrome.scripting.executeScript({
       target: { tabId: currentTab.id },
       func: (stepsToTake) => {
+        console.log('【调试】页面脚本开始执行，步骤数量:', stepsToTake.length);
+        
         const waitForDomChange = (element: Element): Promise<void> => {
           return new Promise((resolve, reject) => {
             const maxWaitTime = 5000; // 5 seconds maximum wait
             const timeout = setTimeout(() => {
               observer.disconnect();
+              console.error('【调试】等待 DOM 变化超时');
               reject(new Error('Timeout waiting for DOM changes'));
             }, maxWaitTime);
 
             const observer = new MutationObserver((_mutations, obs) => {
               clearTimeout(timeout);
               obs.disconnect();
+              console.log('【调试】检测到 DOM 变化');
               resolve();
             });
 
@@ -465,98 +456,534 @@ async function selectBranch(stepsToTake: any[]) {
               attributes: true,
               characterData: true
             });
+            console.log('【调试】开始观察 DOM 变化');
           });
         };
 
-        // Process steps sequentially using async/await
-        let prevId: string | null = null;
-        let buttonDiv: Element | null | undefined = null;
+        const triggerButtonsDisplay = (element: Element): Promise<boolean> => {
+          return new Promise((resolve) => {
+            console.log('【按钮刷新开始】目标元素:', element.getAttribute('data-message-id'));
+            
+            const messageGroup = element.closest('.group\\/conversation-turn');
+            if (!messageGroup) {
+              console.error('【按钮刷新失败】未找到消息组容器');
+              resolve(false);
+              return;
+            }
+            
+            console.log('【按钮刷新进行】找到消息组容器');
+            
+            // 记录初始状态
+            const buttonContainer = messageGroup.querySelector('.mb-2.flex.gap-3');
+            const initialButtonCount = buttonContainer?.querySelectorAll('button').length || 0;
+            console.log('【按钮刷新进行】初始按钮数量:', initialButtonCount);
+            
+            const messageContent = messageGroup.querySelector('.min-h-8.text-message');
+            const messageAuthorRole = messageContent?.getAttribute('data-message-author-role');
+            console.log('【按钮刷新进行】消息作者角色:', messageAuthorRole);
+            
+            const messageElement = messageGroup.querySelector('[data-message-id]');
+            if (!messageElement) {
+              console.error('【按钮刷新失败】未找到消息元素');
+              resolve(false);
+              return;
+            }
+            
+            console.log('【按钮刷新进行】找到消息元素，开始触发事件');
+            
+            // 创建事件集合
+            const events = [
+              new MouseEvent('mouseenter', { bubbles: true, cancelable: true, view: window }),
+              new MouseEvent('mouseover', { bubbles: true, cancelable: true, view: window }),
+              new MouseEvent('mousemove', { bubbles: true, cancelable: true, view: window }),
+              new MouseEvent('focus', { bubbles: true, cancelable: true, view: window })
+            ];
+            
+            // 强制触发所有可能的位置
+            const elementsToTrigger = [
+              messageGroup,
+              messageElement,
+              messageElement.parentElement,
+              messageElement.parentElement?.parentElement,
+              messageElement.parentElement?.parentElement?.parentElement,
+              messageContent,
+              messageGroup.querySelector('.message-actions'),
+              messageGroup.querySelector('.message-header'),
+              messageGroup.querySelector('.flex-1'),
+              messageGroup.querySelector('.flex'),
+              ...(Array.from(messageGroup.querySelectorAll('.flex'))),
+              ...(Array.from(messageGroup.querySelectorAll('.mb-2'))),
+              ...(Array.from(messageGroup.querySelectorAll('.gap-3'))),
+              ...(Array.from(messageGroup.querySelectorAll('.flex-row-reverse')))
+            ].filter(el => el != null);
+            
+            console.log('【按钮刷新进行】找到可触发元素数量:', elementsToTrigger.length);
+            
+            // 对每个元素触发所有事件
+            elementsToTrigger.forEach(el => {
+              if (el) {
+                events.forEach(event => {
+                  el.dispatchEvent(event);
+                });
+                
+                // 尝试直接点击
+                try {
+                  (el as HTMLElement).click();
+                } catch (e) {
+                  // 忽略错误
+                }
+              }
+            });
+            
+            // 直接移动鼠标到元素中心
+            try {
+              const rect = messageElement.getBoundingClientRect();
+              const centerX = rect.left + rect.width / 2;
+              const centerY = rect.top + rect.height / 2;
+              
+              const moveEvent = new MouseEvent('mousemove', {
+                bubbles: true,
+                cancelable: true,
+                view: window,
+                clientX: centerX,
+                clientY: centerY
+              });
+              
+              document.elementFromPoint(centerX, centerY)?.dispatchEvent(moveEvent);
+              messageElement.dispatchEvent(moveEvent);
+              messageGroup.dispatchEvent(moveEvent);
+            } catch (e) {
+              console.log('【按钮刷新进行】触发鼠标移动事件失败:', e);
+            }
+            
+            // 检查结果
+            setTimeout(() => {
+              // 查找所有可能的按钮容器
+              const possibleContainers = [
+                messageGroup.querySelector('.mb-2.flex.gap-3'),
+                messageGroup.querySelector('.flex.gap-3'),
+                messageGroup.querySelector('.mb-2.flex'),
+                messageGroup.querySelector('.message-actions'),
+                ...Array.from(messageGroup.querySelectorAll('.flex.gap-3')),
+                ...Array.from(messageGroup.querySelectorAll('.mb-2.flex'))
+              ].filter(el => el != null);
+              
+              console.log('【按钮刷新进行】找到可能的按钮容器数量:', possibleContainers.length);
+              
+              // 在所有容器中查找按钮
+              let maxButtonCount = 0;
+              possibleContainers.forEach(container => {
+                if (container) {
+                  const buttons = container.querySelectorAll('button');
+                  if (buttons.length > maxButtonCount) {
+                    maxButtonCount = buttons.length;
+                  }
+                }
+              });
+              
+              console.log('【按钮刷新进行】找到最大按钮数量:', maxButtonCount);
+              
+              // 寻找特定导航按钮
+              const allButtons = Array.from(messageGroup.querySelectorAll('button'));
+              const hasNavigationButtons = allButtons.some(button => {
+                const ariaLabel = button.getAttribute('aria-label');
+                return ariaLabel === "Previous response" || ariaLabel === "Next response" || 
+                       ariaLabel === "上一回复" || ariaLabel === "下一回复";
+              });
+              
+              console.log('【按钮刷新进行】是否找到导航按钮:', hasNavigationButtons);
+              console.log('【按钮刷新进行】消息组中的所有按钮数量:', allButtons.length);
+              
+              // 成功条件：按钮数量增加或存在导航按钮
+              const success = maxButtonCount > initialButtonCount || hasNavigationButtons || allButtons.length >= 2;
+              console.log('【按钮刷新' + (success ? '成功' : '失败') + '】最终结果');
+              
+              resolve(success);
+            }, 50);
+          });
+        };
+
         const processSteps = async () => {
           try {
+            console.log('【调试】开始处理导航步骤');
+            let buttonDiv: Element | null = null;
+            
             for (const step of stepsToTake) {
+              console.log('【调试】处理步骤:', JSON.stringify(step));
+              
               if (!step.nodeId) {
+                console.error('【调试】步骤缺少 nodeId');
                 throw new Error('Step missing nodeId');
               }
 
-              if (prevId !== step.nodeId) {
-                // if the node is different from the previous one, we need to find the new buttonDiv
-                const element = document.querySelector(`[data-message-id="${step.nodeId}"]`);
-                if (!element) {
-                  throw new Error(`Element not found for nodeId: ${step.nodeId}`);
-                }
-                
-                buttonDiv = element.parentElement?.parentElement;
-                if (!buttonDiv) {
-                  throw new Error(`Button container not found for nodeId: ${step.nodeId}`);
-                }
+              console.log('【调试】查找节点元素，ID:', step.nodeId);
+              const element = document.querySelector(`[data-message-id="${step.nodeId}"]`);
+              if (!element) {
+                console.error('【调试】未找到节点元素，ID:', step.nodeId);
+                throw new Error(`Element not found for nodeId: ${step.nodeId}`);
               }
-
+              console.log('【调试】找到节点元素');
+              
+              const parentElement = element.parentElement?.parentElement;
+              buttonDiv = parentElement || null;
               if (!buttonDiv) {
+                console.error('【调试】未找到按钮容器');
                 throw new Error(`Button container not found for nodeId: ${step.nodeId}`);
               }
-
-              const buttons = buttonDiv.querySelectorAll("button");
-              if (!buttons || buttons.length < 3) {
-                throw new Error(`Required buttons not found for nodeId: ${step.nodeId}`);
+              console.log('【调试】找到按钮容器');
+              
+              // 强制触发按钮显示，每步都执行
+              console.log(`【调试】开始为节点 ${step.nodeId} 强制触发按钮显示`);
+              let buttonDisplaySuccess = false;
+              for (let attempt = 1; attempt <= 5; attempt++) {
+                console.log(`【调试】按钮刷新尝试 ${attempt}/5`);
+                buttonDisplaySuccess = await triggerButtonsDisplay(element);
+                if (buttonDisplaySuccess) {
+                  console.log('【调试】按钮显示触发成功');
+                  break;
+                }
+                
+                console.log('【调试】按钮显示触发失败，等待后重试');
+                await new Promise(resolve => setTimeout(resolve, 100));
+              }
+              
+              if (!buttonDisplaySuccess) {
+                console.error('【调试】多次尝试后仍未能触发按钮显示，尝试继续执行');
               }
 
-              // Find the button with the correct aria-label based on direction
-              const buttonIndex = Array.from(buttons).findIndex(button => {
-                const ariaLabel = button.getAttribute('aria-label');
-                return step.stepsLeft > 0 ? 
-                  (ariaLabel === "Previous response" || ariaLabel === "上一回复") :
-                  (ariaLabel === "Next response" || ariaLabel === "下一回复");
-              });
-
-              if (buttonIndex === -1) {
-                throw new Error(`Button with required aria-label not found for nodeId: ${step.nodeId}`);
+              let currentButtons = buttonDiv.querySelectorAll("button");
+              console.log('【调试】找到按钮数量:', currentButtons.length);
+              
+              if (!currentButtons || currentButtons.length < 2) {
+                console.log('【调试】按钮数量不足，进行紧急按钮刷新');
+                const messageGroup = element.closest('.group\\/conversation-turn');
+                if (messageGroup) {
+                  console.log('【调试】找到消息组，尝试直接查找所有按钮');
+                  const allButtons = messageGroup.querySelectorAll('button');
+                  console.log('【调试】消息组中找到按钮数量:', allButtons.length);
+                  
+                  const events = [
+                    new MouseEvent('mouseenter', { bubbles: true, cancelable: true, view: window }),
+                    new MouseEvent('mouseover', { bubbles: true, cancelable: true, view: window }),
+                    new FocusEvent('focus', { bubbles: true, cancelable: true })
+                  ];
+                  
+                  events.forEach(event => {
+                    messageGroup.dispatchEvent(event);
+                    element.dispatchEvent(event);
+                  });
+                  
+                  await new Promise(resolve => setTimeout(resolve, 100));
+                  currentButtons = buttonDiv.querySelectorAll("button");
+                  console.log('【调试】紧急刷新后按钮数量:', currentButtons.length);
+                }
+                
+                if (!currentButtons || currentButtons.length < 2) {
+                  console.error('【调试】多次尝试后按钮数量仍不足');
+                  throw new Error(`Required buttons not found for nodeId: ${step.nodeId}`);
+                }
               }
-              buttons[buttonIndex].click();
+
+              let targetButton = null;
+              
+              const findButton = () => {
+                console.log('【调试】开始查找方向按钮，步骤方向:', step.stepsLeft > 0 ? '左' : '右');
+                
+                // 通过aria-label查找
+                const buttonByLabel = Array.from(currentButtons).find((button: Element) => {
+                  const ariaLabel = button.getAttribute('aria-label');
+                  console.log('【调试】检查按钮 aria-label:', ariaLabel);
+                  return step.stepsLeft > 0 ? 
+                    (ariaLabel === "Previous response" || ariaLabel === "上一回复") :
+                    (ariaLabel === "Next response" || ariaLabel === "下一回复");
+                });
+                
+                if (buttonByLabel) {
+                  console.log('【调试】通过aria-label找到按钮');
+                  return buttonByLabel;
+                }
+                
+                // 通过SVG路径查找
+                for (let i = 0; i < currentButtons.length; i++) {
+                  const button = currentButtons[i];
+                  const svg = button.querySelector('svg');
+                  if (svg) {
+                    const path = svg.querySelector('path');
+                    if (path) {
+                      const d = path.getAttribute('d');
+                      const isLeftArrow = d && d.includes('14.7071 5.29289') && d.includes('7.29289 11.2929');
+                      const isRightArrow = d && d.includes('9.29289 18.7071') && d.includes('16.7071 11.2929');
+                      
+                      console.log('【调试】检查SVG路径:', d?.substring(0, 20) + '...');
+                      console.log('【调试】是左箭头:', isLeftArrow, '是右箭头:', isRightArrow);
+                      
+                      if ((step.stepsLeft > 0 && isLeftArrow) || (step.stepsLeft <= 0 && isRightArrow)) {
+                        console.log('【调试】通过SVG路径找到按钮，索引:', i);
+                        return button;
+                      }
+                    }
+                  }
+                }
+                
+                // 通过位置猜测
+                if (currentButtons.length >= 2) {
+                  const index = step.stepsLeft > 0 ? 0 : Math.min(2, currentButtons.length - 1);
+                  console.log('【调试】通过位置猜测找到按钮，索引:', index);
+                  return currentButtons[index];
+                }
+                
+                return null;
+              };
+              
+              targetButton = findButton();
+              
+              if (!targetButton) {
+                console.error('【调试】未找到所需的按钮');
+                throw new Error(`Button with required direction not found for nodeId: ${step.nodeId}`);
+              }
+              
+              console.log('【调试】找到所需按钮，准备点击');
               
               try {
-                prevId = step.nodeId;
+                targetButton.click();
+                console.log('【调试】按钮点击成功');
+              } catch (e: unknown) {
+                console.error('【调试】按钮点击失败:', e);
+                throw new Error(`Failed to click button: ${e instanceof Error ? e.message : String(e)}`);
+              }
+              
+              try {
+                console.log('【调试】等待 DOM 变化');
                 await waitForDomChange(buttonDiv);
+                console.log('【调试】DOM 变化完成，继续下一步');
               } catch (error) {
-                console.error('Error waiting for DOM change:', error);
+                console.error('【调试】等待 DOM 变化时出错:', error);
                 throw error;
               }
             }
+            console.log('【调试】所有导航步骤处理完成');
           } catch (error) {
-            console.error('Error processing steps:', error);
+            console.error('【调试】处理步骤时出错:', error);
             throw error;
           }
         };
 
         processSteps().catch(error => {
-          console.error('Failed to process steps:', error);
+          console.error('【调试】处理步骤失败:', error);
         });
       },
       args: [stepsToTake]
     }).catch(error => {
-      console.error('Script execution failed:', error);
+      console.error('【调试】脚本执行失败:', error);
       throw error;
     });
 
+    console.log('【调试】脚本执行成功');
   } catch (error) {
-    console.error('selectBranch failed:', error);
+    console.error('【调试】selectBranch 执行出错:', error);
     throw error;
   }
 }
 
 async function goToTarget(targetId: string) {
-  const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
-  const currentTab = tabs[0];
+  console.log('【调试】background.ts - goToTarget 开始执行，目标节点 ID:', targetId);
+  
+  try {
+    const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+    console.log('【调试】当前活动标签页:', tabs.length > 0 ? tabs[0].url : '无');
+    
+    const currentTab = tabs[0];
+    if (!currentTab.id) {
+      console.error('【调试】当前标签页没有 ID');
+      return;
+    }
 
-  await chrome.scripting.executeScript({
-    target: { tabId: currentTab.id ?? 0 },
-    func: (targetId) => {
-      const element = document.querySelector(`[data-message-id="${targetId}"]`);
-      if (element) {
-        element.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      }
-    },
-    args: [targetId]
-  })
+    console.log('【调试】开始执行滚动脚本，标签页 ID:', currentTab.id);
+    await chrome.scripting.executeScript({
+      target: { tabId: currentTab.id ?? 0 },
+      func: (targetId) => {
+        console.log('【调试】页面滚动脚本开始执行，目标节点 ID:', targetId);
+        
+        // 重用与processSteps中相同的按钮刷新逻辑
+        const triggerButtonsDisplay = (element: Element): Promise<boolean> => {
+          return new Promise((resolve) => {
+            console.log('【按钮刷新开始】goToTarget中触发，目标元素:', element.getAttribute('data-message-id'));
+            
+            const messageGroup = element.closest('.group\\/conversation-turn');
+            if (!messageGroup) {
+              console.error('【按钮刷新失败】未找到消息组容器');
+              resolve(false);
+              return;
+            }
+            
+            console.log('【按钮刷新进行】找到消息组容器');
+            
+            // 记录初始状态
+            const buttonContainer = messageGroup.querySelector('.mb-2.flex.gap-3');
+            const initialButtonCount = buttonContainer?.querySelectorAll('button').length || 0;
+            console.log('【按钮刷新进行】初始按钮数量:', initialButtonCount);
+            
+            const messageContent = messageGroup.querySelector('.min-h-8.text-message');
+            const messageAuthorRole = messageContent?.getAttribute('data-message-author-role');
+            console.log('【按钮刷新进行】消息作者角色:', messageAuthorRole);
+            
+            const messageElement = messageGroup.querySelector('[data-message-id]');
+            if (!messageElement) {
+              console.error('【按钮刷新失败】未找到消息元素');
+              resolve(false);
+              return;
+            }
+            
+            console.log('【按钮刷新进行】找到消息元素，开始触发事件');
+            
+            // 创建事件集合
+            const events = [
+              new MouseEvent('mouseenter', { bubbles: true, cancelable: true, view: window }),
+              new MouseEvent('mouseover', { bubbles: true, cancelable: true, view: window }),
+              new MouseEvent('mousemove', { bubbles: true, cancelable: true, view: window }),
+              new MouseEvent('focus', { bubbles: true, cancelable: true, view: window })
+            ];
+            
+            // 强制触发所有可能的位置
+            const elementsToTrigger = [
+              messageGroup,
+              messageElement,
+              messageElement.parentElement,
+              messageElement.parentElement?.parentElement,
+              messageElement.parentElement?.parentElement?.parentElement,
+              messageContent,
+              messageGroup.querySelector('.message-actions'),
+              messageGroup.querySelector('.message-header'),
+              messageGroup.querySelector('.flex-1'),
+              messageGroup.querySelector('.flex'),
+              ...(Array.from(messageGroup.querySelectorAll('.flex'))),
+              ...(Array.from(messageGroup.querySelectorAll('.mb-2'))),
+              ...(Array.from(messageGroup.querySelectorAll('.gap-3'))),
+              ...(Array.from(messageGroup.querySelectorAll('.flex-row-reverse')))
+            ].filter(el => el != null);
+            
+            console.log('【按钮刷新进行】找到可触发元素数量:', elementsToTrigger.length);
+            
+            // 对每个元素触发所有事件
+            elementsToTrigger.forEach(el => {
+              if (el) {
+                events.forEach(event => {
+                  el.dispatchEvent(event);
+                });
+                
+                // 尝试直接点击
+                try {
+                  (el as HTMLElement).click();
+                } catch (e) {
+                  // 忽略错误
+                }
+              }
+            });
+            
+            // 直接移动鼠标到元素中心
+            try {
+              const rect = messageElement.getBoundingClientRect();
+              const centerX = rect.left + rect.width / 2;
+              const centerY = rect.top + rect.height / 2;
+              
+              const moveEvent = new MouseEvent('mousemove', {
+                bubbles: true,
+                cancelable: true,
+                view: window,
+                clientX: centerX,
+                clientY: centerY
+              });
+              
+              document.elementFromPoint(centerX, centerY)?.dispatchEvent(moveEvent);
+              messageElement.dispatchEvent(moveEvent);
+              messageGroup.dispatchEvent(moveEvent);
+            } catch (e) {
+              console.log('【按钮刷新进行】触发鼠标移动事件失败:', e);
+            }
+            
+            // 检查结果
+            setTimeout(() => {
+              // 查找所有可能的按钮容器
+              const possibleContainers = [
+                messageGroup.querySelector('.mb-2.flex.gap-3'),
+                messageGroup.querySelector('.flex.gap-3'),
+                messageGroup.querySelector('.mb-2.flex'),
+                messageGroup.querySelector('.message-actions'),
+                ...Array.from(messageGroup.querySelectorAll('.flex.gap-3')),
+                ...Array.from(messageGroup.querySelectorAll('.mb-2.flex'))
+              ].filter(el => el != null);
+              
+              console.log('【按钮刷新进行】找到可能的按钮容器数量:', possibleContainers.length);
+              
+              // 在所有容器中查找按钮
+              let maxButtonCount = 0;
+              possibleContainers.forEach(container => {
+                if (container) {
+                  const buttons = container.querySelectorAll('button');
+                  if (buttons.length > maxButtonCount) {
+                    maxButtonCount = buttons.length;
+                  }
+                }
+              });
+              
+              console.log('【按钮刷新进行】找到最大按钮数量:', maxButtonCount);
+              
+              // 寻找特定导航按钮
+              const allButtons = Array.from(messageGroup.querySelectorAll('button'));
+              const hasNavigationButtons = allButtons.some(button => {
+                const ariaLabel = button.getAttribute('aria-label');
+                return ariaLabel === "Previous response" || ariaLabel === "Next response" || 
+                      ariaLabel === "上一回复" || ariaLabel === "下一回复";
+              });
+              
+              console.log('【按钮刷新进行】是否找到导航按钮:', hasNavigationButtons);
+              console.log('【按钮刷新进行】消息组中的所有按钮数量:', allButtons.length);
+              
+              // 成功条件：按钮数量增加或存在导航按钮
+              const success = maxButtonCount > initialButtonCount || hasNavigationButtons || allButtons.length >= 2;
+              console.log('【按钮刷新' + (success ? '成功' : '失败') + '】最终结果');
+              
+              resolve(success);
+            }, 50);
+          });
+        };
+        
+        const element = document.querySelector(`[data-message-id="${targetId}"]`);
+        console.log('【调试】查找目标元素结果:', element ? '找到' : '未找到');
+        
+        if (element) {
+          const tryTriggerButtons = async () => {
+            console.log('【调试】开始尝试触发按钮显示');
+            for (let attempt = 1; attempt <= 5; attempt++) {
+              console.log(`【调试】goToTarget - 按钮刷新尝试 ${attempt}/5`);
+              const success = await triggerButtonsDisplay(element);
+              
+              if (success) {
+                console.log('【调试】goToTarget - 按钮显示触发成功');
+                return true;
+              }
+              
+              console.log('【调试】goToTarget - 按钮显示触发失败，等待后重试');
+              await new Promise(resolve => setTimeout(resolve, 100));
+            }
+            
+            console.log('【调试】goToTarget - 多次尝试后仍未能触发按钮显示');
+            return false;
+          };
+          
+          tryTriggerButtons().then(() => {
+            console.log('【调试】滚动到目标元素');
+            element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          });
+        }
+      },
+      args: [targetId]
+    });
+    
+    console.log('【调试】滚动脚本执行成功');
+  } catch (error) {
+    console.error('【调试】goToTarget 执行出错:', error);
+  }
 }
 
 captureHeaders();
@@ -606,19 +1033,15 @@ chrome.tabs.onActivated.addListener(async (activeInfo) => {
   }
 });
 
-// 监听 URL 变化
 chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
   if (changeInfo.url && tab.url && tab.url.includes('chatgpt.com/c/')) {
     console.log('URL changed to:', tab.url);
-    // 向内容脚本发送消息
     chrome.tabs.sendMessage(tabId, { action: "urlChanged", url: tab.url }).catch(err => {
-      // 忽略接收者不存在的错误
       console.log('Error sending message to content script:', err);
     });
   }
 });
 
-// 添加 webNavigation 监听器，更可靠地检测单页应用中的 URL 变化
 chrome.webNavigation.onHistoryStateUpdated.addListener((details) => {
   if (details.url.includes('chatgpt.com/c/')) {
     console.log('History state updated, URL:', details.url);

@@ -181,8 +181,16 @@ const ConversationTree = () => {
 
   // Calculate navigation steps when a node is clicked
   const handleNodeClick = useCallback((messageId: string) => {
+    console.log('【调试】handleNodeClick 被调用，目标节点ID:', messageId);
+    console.log('【调试】当前节点数量:', nodes.length);
+    
     setMenu(null);
-    return calculateSteps(nodes, messageId);
+    const steps = calculateSteps(nodes, messageId);
+    
+    console.log('【调试】calculateSteps 返回的步骤:', JSON.stringify(steps, null, 2));
+    console.log('【调试】步骤数量:', steps.length);
+    
+    return steps;
   }, [nodes]);
 
   const onNodeContextMenu = useCallback(

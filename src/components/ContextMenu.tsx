@@ -32,25 +32,28 @@ export const ContextMenu = (props: ContextMenuProps) => {
     const handleSend = async () => {
         if (!inputValue.trim()) return;
 
-        await selectBranch();
-        
-        if (props.role === 'user') {
-            await editMessage();
-        } else if (props.role === 'assistant') {
-            await respondToMessage();
+        try {
+            if (props.hidden) {
+                await selectBranch();
+            }
+            
+            if (props.role === 'user') {
+                await editMessage();
+            } else if (props.role === 'assistant') {
+                await respondToMessage();
+            }
+            
+            setShowInput(false);
+            setInputValue('');
+            props.refreshNodes();
+        } catch (error) {
+            console.error('操作失败:', error);
+            alert(`操作失败: ${error instanceof Error ? error.message : '未知错误'}`);
         }
-        
-        setShowInput(false);
-        setInputValue('');
-        props.refreshNodes();
     };
 
     // API interaction functions
     const editMessage = async () => {
-        if (props.hidden) {
-            await selectBranch();
-        }
-
         const response = await chrome.runtime.sendMessage({ 
             action: 'editMessage', 
             messageId: props.messageId, 
@@ -60,7 +63,7 @@ export const ContextMenu = (props: ContextMenuProps) => {
         
         if (!response.completed) {
             console.error('Edit message failed:', response.error);
-            return;
+            throw new Error(`编辑消息失败: ${response.error || '未知错误'}`);
         }
         
         await new Promise(resolve => setTimeout(resolve, 2000));
@@ -68,10 +71,6 @@ export const ContextMenu = (props: ContextMenuProps) => {
     };
 
     const respondToMessage = async () => {
-        if (props.hidden) {
-            await selectBranch();
-        }
-
         const response = await chrome.runtime.sendMessage({ 
             action: 'respondToMessage', 
             childrenIds: props.childrenIds, 
@@ -81,7 +80,7 @@ export const ContextMenu = (props: ContextMenuProps) => {
         
         if (!response.completed) {
             console.error('Response message failed:', response.error);
-            return;
+            throw new Error(`回复消息失败: ${response.error || '未知错误'}`);
         }
 
         await new Promise(resolve => setTimeout(resolve, 2000));
@@ -91,27 +90,102 @@ export const ContextMenu = (props: ContextMenuProps) => {
     const selectBranch = async () => {
         if (!props.messageId) return;
 
+        console.log('【导航】===== selectBranch 开始执行 =====');
+        console.log('【导航】目标节点ID:', props.messageId);
+        
         const steps = props.onNodeClick(props.messageId);
-        if (!steps) return;
+        console.log('【导航】计算出的导航步骤:', JSON.stringify(steps, null, 2));
+        
+        if (!steps || steps.length === 0) {
+            console.log('【导航】没有计算出导航步骤，退出导航');
+            return;
+        }
 
         try {
-            const execResponse = await chrome.runtime.sendMessage({ 
-                action: "executeSteps", 
-                steps: steps,
-                requireCompletion: true
-            });
-
-            if (!execResponse.completed) {
-                throw new Error('Background operation did not complete successfully');
+            // 最大重试次数
+            const maxRetries = 5;
+            let retryCount = 0;
+            let navigationSuccess = false;
+            
+            while (!navigationSuccess && retryCount < maxRetries) {
+                if (retryCount > 0) {
+                    console.log(`【导航】第 ${retryCount} 次重试导航`);
+                }
+                
+                // 执行导航步骤
+                console.log('【导航】开始执行导航步骤，总步数:', steps.length);
+                
+                // 使用新的一次性导航方法
+                const execResponse = await chrome.runtime.sendMessage({ 
+                    action: "selectBranch", 
+                    steps: steps
+                });
+                
+                if (!execResponse || !execResponse.success) {
+                    console.error('【导航】❌ 导航执行失败:', execResponse);
+                    if (retryCount >= maxRetries - 1) {
+                        throw new Error('导航执行失败');
+                    }
+                    retryCount++;
+                    continue;
+                }
+                
+                console.log('【导航】✓ 导航执行成功');
+                
+                // 等待DOM更新
+                console.log('【导航】等待DOM更新 (1ms)');
+                await new Promise(resolve => setTimeout(resolve, 1));
+                
+                // 刷新节点状态
+                console.log('【导航】刷新节点状态');
+                props.onRefresh();
+                
+                // 等待节点状态更新
+                console.log('【导航】等待节点状态更新 (1ms)');
+                await new Promise(resolve => setTimeout(resolve, 1));
+                
+                // 验证导航是否成功
+                console.log('【导航】验证导航是否成功');
+                try {
+                    const verifyResponse = await chrome.runtime.sendMessage({
+                        action: "checkNodes",
+                        nodeIds: [props.messageId]
+                    });
+                    
+                    if (verifyResponse && verifyResponse.success && Array.isArray(verifyResponse.existingNodes)) {
+                        // existingNodes[0]为true表示节点不存在，为false表示节点存在
+                        if (!verifyResponse.existingNodes[0]) {
+                            console.log('【导航】✓ 导航成功，目标节点可见');
+                            navigationSuccess = true;
+                        } else {
+                            console.log('【导航】⚠️ 导航不完全成功，目标节点可能仍然隐藏，将重试');
+                        }
+                    } else {
+                        console.log('【导航】⚠️ 验证响应无效，将重试');
+                    }
+                } catch (error) {
+                    console.error('【导航】❌ 验证导航时出错:', error);
+                }
+                
+                if (!navigationSuccess) {
+                    if (retryCount >= maxRetries - 1) {
+                        console.error('【导航】❌ 达到最大重试次数，导航失败');
+                        throw new Error('导航失败：目标节点仍然隐藏');
+                    }
+                }
+                
+                retryCount++;
             }
-
-            props.onRefresh();
-            await chrome.runtime.sendMessage({ 
-                action: "goToTarget", 
-                targetId: props.messageId 
-            });
+            
+            if (navigationSuccess) {
+                console.log('【导航】===== 导航过程成功完成 =====');
+            } else {
+                console.error('【导航】===== 导航过程失败 =====');
+                throw new Error('导航失败：无法使目标节点可见');
+            }
         } catch (error) {
-            console.error('Error executing steps:', error);
+            console.error('【导航】❌ 导航过程出错:', error);
+            throw error; // 重新抛出错误，让调用者知道导航失败
         }
     };
 
