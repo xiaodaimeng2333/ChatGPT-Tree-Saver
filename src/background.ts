@@ -19,6 +19,150 @@ function loadRequestHeaders(): Promise<chrome.webRequest.HttpHeader[] | null> {
   });
 }
 
+// Function to trigger native events for all article elements in the page
+async function triggerNativeArticleEvents() {
+  const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+  const currentTab = tabs[0];
+
+  if (!currentTab?.id) {
+    console.error('No active tab found for triggering native events');
+    return;
+  }
+
+  await chrome.scripting.executeScript({
+    target: { tabId: currentTab.id },
+    func: () => {
+      function triggerNativeEvents(element: Element) {
+        if (!element) {
+          console.error("triggerNativeEvents: Element is null or undefined.");
+          return;
+        }
+
+        const eventTypes = [
+          'mouseover', 'mouseenter', 'mousemove', 'mousedown', 'mouseup', 'click',
+          'pointerover', 'pointerenter', 'pointerdown', 'pointerup', 'pointermove', 'pointercancel',
+          'focus', 'focusin'
+        ];
+
+        for (const eventType of eventTypes) {
+          try {
+            const event = new MouseEvent(eventType, {
+              bubbles: true,
+              cancelable: true,
+              view: window,
+            });
+
+            Object.defineProperty(event, 'target', {
+              value: element,
+              enumerable: true,
+              configurable: true
+            });
+            Object.defineProperty(event, 'currentTarget', {
+              value: element,
+              enumerable: true,
+              configurable: true
+            });
+
+            element.dispatchEvent(event);
+          } catch (error) {
+            console.error(`Error dispatching ${eventType} event:`, error);
+          }
+        }
+      }
+
+      // Keep track of triggered elements.
+      const triggeredElements = new Set<Element>();
+
+      function processArticle(article: Element) {
+        if (!triggeredElements.has(article)) { //only if not already triggered
+          // Trigger events on the article itself.
+          triggerNativeEvents(article);
+
+          // Trigger events on each direct child of the article.
+          Array.from(article.children).forEach(child => {
+            triggerNativeEvents(child);
+          });
+          triggeredElements.add(article); //remember we triggered.
+        }
+      }
+
+      function findAndTriggerEvents() {
+        const articles = document.querySelectorAll('article[data-testid^="conversation-turn-"]');
+        articles.forEach(processArticle);
+      }
+
+      function startPollingForNewArticles() {
+        let previousArticleCount = document.querySelectorAll('article[data-testid^="conversation-turn-"]').length;
+        
+        const pollingInterval = setInterval(() => {
+          const currentArticleCount = document.querySelectorAll('article[data-testid^="conversation-turn-"]').length;
+          
+          if (currentArticleCount > previousArticleCount) {
+            findAndTriggerEvents();
+          }
+          
+          previousArticleCount = currentArticleCount;
+        }, 2000);
+        
+        setTimeout(() => {
+          clearInterval(pollingInterval);
+        }, 30000);
+      }
+
+      function init() {
+        findAndTriggerEvents();
+        startPollingForNewArticles();
+
+        const parentContainerSelector = '.mt-1\\.5\\.flex\\.flex-col\\.text-sm\\.\\@thread-xl\\/thread\\:pt-header-height\\.md\\:pb-9';
+        const parentContainer = document.querySelector(parentContainerSelector);
+
+        const observer = new MutationObserver(() => {
+          findAndTriggerEvents();
+        });
+
+        const observeTarget = parentContainer || document.body;
+        observer.observe(observeTarget, { childList: true, subtree: true });
+
+        const chatContainer = document.querySelector('main');
+        if (chatContainer) {
+          const chatObserver = new MutationObserver((mutations) => {
+            for (const mutation of mutations) {
+              if (mutation.type === 'childList' && mutation.addedNodes.length > 0) {
+                setTimeout(() => {
+                  findAndTriggerEvents();
+                  startPollingForNewArticles();
+                }, 500);
+                break;
+              }
+            }
+          });
+          
+          chatObserver.observe(chatContainer, { childList: true, subtree: true });
+        }
+      }
+
+      // Check if we've already initialized to avoid duplicate observers
+      // Use a data attribute on body instead of a window property
+      const isInitialized = document.body.hasAttribute('data-events-initialized');
+      if (!isInitialized) {
+        document.body.setAttribute('data-events-initialized', 'true');
+        
+        // Ensure DOM is ready
+        if (document.readyState === "loading") {
+          document.addEventListener("DOMContentLoaded", init);
+        } else {
+          init();
+        }
+      } else {
+        // If already initialized, just trigger events for any new articles
+        findAndTriggerEvents();
+      }
+    }
+  }).catch(error => {
+    console.error('Error executing triggerNativeArticleEvents:', error);
+  });
+}
+
 function captureHeaders() {
   chrome.webRequest.onBeforeSendHeaders.addListener(
     (details) => {
@@ -52,6 +196,8 @@ chrome.runtime.onMessage.addListener(
     else if (request.action === "fetchConversationHistory") {
       fetchConversationHistory()
         .then(data => {
+          // 成功获取对话历史后触发原生事件
+          triggerNativeArticleEvents();
           sendResponse({ success: true, data });
         })
         .catch(error => {
@@ -133,6 +279,10 @@ chrome.runtime.onMessage.addListener(
       console.log(request.message);
       sendResponse({ success: true });
       return true;
+    } else if (request.action === "triggerNativeEvents") {
+      triggerNativeArticleEvents();
+      sendResponse({ success: true });
+      return true;
     }
     return false; // For non-async handlers
   }
@@ -193,6 +343,10 @@ async function fetchConversationHistory() {
     if (!data) {
       throw new Error('No data received');
     }
+    
+    // 触发原生事件以确保按钮可见
+    await triggerNativeArticleEvents();
+    
     return data;
   } catch (error) {
     console.error('Error in fetchConversationHistory:', error);
@@ -442,6 +596,9 @@ async function selectBranch(stepsToTake: any[]) {
       throw new Error('当前标签页没有ID');
     }
 
+    // 触发原生事件，确保所有按钮可见
+    await triggerNativeArticleEvents();
+
     console.log('【导航后台】开始执行导航脚本');
     const result = await chrome.scripting.executeScript({
       target: { tabId: currentTab.id },
@@ -449,261 +606,37 @@ async function selectBranch(stepsToTake: any[]) {
         console.log('【导航页面】===== 页面导航脚本开始执行 =====');
         console.log('【导航页面】步骤数量:', stepsToTake.length);
         
-        // 等待DOM变化的函数
-        const waitForDomChange = (timeout = 300): Promise<boolean> => {
+        // 优化的DOM变化检测，使用更短的超时时间
+        const waitForDomChange = (): Promise<boolean> => {
           return new Promise((resolve) => {
-            console.log('【导航页面】开始观察DOM变化');
-            // 转发日志到后台
-            chrome.runtime.sendMessage({ action: "log", message: '【导航页面】开始观察DOM变化' });
+            // 更短的最大等待时间
+            const maxWaitTime = 300;
             
-            // 获取主要内容区域
-            const mainContent = document.querySelector('main') || document.body;
-            
-            const timeoutId = setTimeout(() => {
+            const timeout = setTimeout(() => {
               observer.disconnect();
-              console.log('【导航页面】⚠️ 等待DOM变化超时');
-              chrome.runtime.sendMessage({ action: "log", message: '【导航页面】⚠️ 等待DOM变化超时' });
               resolve(false);
-            }, timeout);
+            }, maxWaitTime);
 
             const observer = new MutationObserver((mutations) => {
-              if (mutations.length > 0) {
-                clearTimeout(timeoutId);
+              // 检查是否有意义的变化表明内容变化
+              if (mutations.some(m => 
+                  m.type === 'childList' && (m.addedNodes.length > 0 || m.removedNodes.length > 0) ||
+                  (m.type === 'attributes' && ['style', 'class'].includes(m.attributeName || '')))) {
+                clearTimeout(timeout);
                 observer.disconnect();
-                console.log('【导航页面】✓ 检测到DOM变化，变化数量:', mutations.length);
-                chrome.runtime.sendMessage({ action: "log", message: `【导航页面】✓ 检测到DOM变化，变化数量: ${mutations.length}` });
-                setTimeout(() => resolve(true), 10); // 减少等待时间
+                resolve(true);
               }
             });
 
+            // 观察主要内容区域以更快地检测变化
+            const mainContent = document.querySelector('main') || document.body;
             observer.observe(mainContent, {
               childList: true,
               subtree: true,
               attributes: true,
-              characterData: true
+              attributeFilter: ['style', 'class', 'aria-hidden']
             });
           });
-        };
-
-        // 强力触发按钮显示的函数
-        const triggerButtonsDisplay = (element: Element): Promise<boolean> => {
-          return new Promise((resolve) => {
-            console.log('【按钮刷新】===== 开始强力触发按钮显示 =====');
-            chrome.runtime.sendMessage({ action: "log", message: '【按钮刷新】===== 开始强力触发按钮显示 =====' });
-            
-            console.log('【按钮刷新】目标元素ID:', element.getAttribute('data-message-id'));
-            chrome.runtime.sendMessage({ action: "log", message: `【按钮刷新】目标元素ID: ${element.getAttribute('data-message-id')}` });
-            
-            const messageGroup = element.closest('.group\\/conversation-turn');
-            if (!messageGroup) {
-              console.log('【按钮刷新】❌ 未找到消息组容器，无法触发按钮显示');
-              chrome.runtime.sendMessage({ action: "log", message: '【按钮刷新】❌ 未找到消息组容器，无法触发按钮显示' });
-              resolve(false);
-              return;
-            }
-            
-            console.log('【按钮刷新】✓ 找到消息组容器');
-            chrome.runtime.sendMessage({ action: "log", message: '【按钮刷新】✓ 找到消息组容器' });
-            
-            // 记录初始按钮状态
-            const buttonContainer = messageGroup.querySelector('.mb-2.flex.gap-3, .flex.gap-3, .message-actions');
-            const initialButtonCount = buttonContainer?.querySelectorAll('button').length || 0;
-            console.log('【按钮刷新】初始按钮数量:', initialButtonCount);
-            chrome.runtime.sendMessage({ action: "log", message: `【按钮刷新】初始按钮数量: ${initialButtonCount}` });
-            
-            // 如果已经有按钮，直接返回成功
-            if (initialButtonCount >= 2) {
-              console.log('【按钮刷新】已有足够按钮，无需触发');
-              chrome.runtime.sendMessage({ action: "log", message: '【按钮刷新】已有足够按钮，无需触发' });
-              resolve(true);
-              return;
-            }
-            
-            const messageContent = messageGroup.querySelector('.min-h-8.text-message, .text-message, .markdown');
-            const messageAuthorRole = messageContent?.getAttribute('data-message-author-role');
-            console.log('【按钮刷新】消息作者角色:', messageAuthorRole);
-            chrome.runtime.sendMessage({ action: "log", message: `【按钮刷新】消息作者角色: ${messageAuthorRole}` });
-            
-            const messageElement = messageGroup.querySelector('[data-message-id]');
-            if (messageElement) {
-              console.log('【按钮刷新】✓ 找到消息元素，开始触发事件');
-              chrome.runtime.sendMessage({ action: "log", message: '【按钮刷新】✓ 找到消息元素，开始触发事件' });
-              
-              // 强力触发方法1: 多种事件类型
-              const events = [
-                new MouseEvent('mouseenter', { bubbles: true, cancelable: true, view: window }),
-                new MouseEvent('mouseover', { bubbles: true, cancelable: true, view: window }),
-                new MouseEvent('mousemove', { bubbles: true, cancelable: true, view: window }),
-                new FocusEvent('focus', { bubbles: true, cancelable: true }),
-                new MouseEvent('pointerover', { bubbles: true, cancelable: true, view: window }),
-                new MouseEvent('pointerenter', { bubbles: true, cancelable: true, view: window })
-              ];
-              
-              // 强力触发方法2: 对消息组的所有可能元素触发事件
-              console.log('【按钮刷新】触发消息组事件');
-              chrome.runtime.sendMessage({ action: "log", message: '【按钮刷新】触发消息组事件' });
-              events.forEach(event => {
-                messageGroup.dispatchEvent(event);
-              });
-              
-              console.log('【按钮刷新】触发消息元素事件');
-              chrome.runtime.sendMessage({ action: "log", message: '【按钮刷新】触发消息元素事件' });
-              events.forEach(event => {
-                messageElement.dispatchEvent(event);
-              });
-              
-              // 强力触发方法3: 对所有父元素触发事件
-              const parentElements = [
-                messageElement.parentElement,
-                messageElement.parentElement?.parentElement,
-                messageElement.parentElement?.parentElement?.parentElement,
-                messageElement.parentElement?.parentElement?.parentElement?.parentElement
-              ];
-              
-              console.log('【按钮刷新】触发父元素事件');
-              chrome.runtime.sendMessage({ action: "log", message: '【按钮刷新】触发父元素事件' });
-              parentElements.forEach(parent => {
-                if (parent) {
-                  events.forEach(event => {
-                    parent.dispatchEvent(event);
-                  });
-                }
-              });
-              
-              // 强力触发方法4: 对消息内容触发事件
-              if (messageContent) {
-                console.log('【按钮刷新】触发消息内容区域事件');
-                chrome.runtime.sendMessage({ action: "log", message: '【按钮刷新】触发消息内容区域事件' });
-                events.forEach(event => {
-                  messageContent.dispatchEvent(event);
-                });
-              }
-              
-              // 强力触发方法5: 对消息操作区域触发事件
-              const messageActions = messageGroup.querySelector('.message-actions, .message-header, .flex.gap-3');
-              if (messageActions) {
-                console.log('【按钮刷新】触发消息操作区域事件');
-                chrome.runtime.sendMessage({ action: "log", message: '【按钮刷新】触发消息操作区域事件' });
-                events.forEach(event => {
-                  messageActions.dispatchEvent(event);
-                });
-              }
-              
-              // 强力触发方法6: 尝试点击消息元素
-              try {
-                console.log('【按钮刷新】尝试点击消息元素');
-                chrome.runtime.sendMessage({ action: "log", message: '【按钮刷新】尝试点击消息元素' });
-                (messageElement as HTMLElement).click();
-              } catch (e) {
-                console.log('【按钮刷新】点击消息元素失败:', e);
-                chrome.runtime.sendMessage({ action: "log", message: `【按钮刷新】点击消息元素失败: ${e}` });
-              }
-              
-              // 检查按钮是否显示出来
-              setTimeout(() => {
-                // 检查多个可能的按钮容器选择器
-                const selectors = [
-                  '.mb-2.flex.gap-3', 
-                  '.flex.gap-3', 
-                  '.message-actions button',
-                  '.message-header button',
-                  '.flex.items-center button'
-                ];
-                
-                let updatedButtonCount = 0;
-                
-                for (const selector of selectors) {
-                  const container = messageGroup.querySelector(selector);
-                  if (container) {
-                    const buttons = container.querySelectorAll('button');
-                    if (buttons.length > updatedButtonCount) {
-                      updatedButtonCount = buttons.length;
-                    }
-                  }
-                }
-                
-                console.log('【按钮刷新】触发后按钮数量:', updatedButtonCount);
-                chrome.runtime.sendMessage({ action: "log", message: `【按钮刷新】触发后按钮数量: ${updatedButtonCount}` });
-                
-                const success = updatedButtonCount > initialButtonCount;
-                console.log('【按钮刷新】按钮显示触发' + (success ? '✓ 成功' : '❌ 失败'));
-                chrome.runtime.sendMessage({ action: "log", message: `【按钮刷新】按钮显示触发${success ? '✓ 成功' : '❌ 失败'}` });
-                
-                resolve(success);
-              }, 10); // 减少等待时间
-            } else {
-              console.log('【按钮刷新】❌ 未找到消息元素，无法触发按钮显示');
-              chrome.runtime.sendMessage({ action: "log", message: '【按钮刷新】❌ 未找到消息元素，无法触发按钮显示' });
-              resolve(false);
-            }
-          });
-        };
-
-        // 查找目标按钮的函数
-        const findNavigationButton = (buttonDiv: Element, isLeftDirection: boolean): HTMLElement | null => {
-          console.log('【导航页面】开始查找目标按钮，方向:', isLeftDirection ? '左' : '右');
-          chrome.runtime.sendMessage({ action: "log", message: `【导航页面】开始查找目标按钮，方向: ${isLeftDirection ? '左' : '右'}` });
-          
-          const currentButtons = buttonDiv.querySelectorAll("button");
-          console.log('【导航页面】当前按钮数量:', currentButtons.length);
-          chrome.runtime.sendMessage({ action: "log", message: `【导航页面】当前按钮数量: ${currentButtons.length}` });
-          
-          if (!currentButtons || currentButtons.length < 2) {
-            console.log('【导航页面】⚠️ 按钮数量不足，可能无法完成导航');
-            chrome.runtime.sendMessage({ action: "log", message: '【导航页面】⚠️ 按钮数量不足，可能无法完成导航' });
-            return null;
-          }
-          
-          // 方法1: 通过aria-label查找
-          const buttonByAriaLabel = Array.from(currentButtons).find((button: Element) => {
-            const ariaLabel = button.getAttribute('aria-label');
-            return isLeftDirection ? 
-              (ariaLabel === "Previous response" || ariaLabel === "上一回复") :
-              (ariaLabel === "Next response" || ariaLabel === "下一回复");
-          }) as HTMLElement | null;
-          
-          if (buttonByAriaLabel) {
-            console.log('【导航页面】✓ 通过aria-label找到按钮');
-            chrome.runtime.sendMessage({ action: "log", message: '【导航页面】✓ 通过aria-label找到按钮' });
-            return buttonByAriaLabel;
-          }
-          
-          // 方法2: 通过SVG路径查找
-          console.log('【导航页面】通过aria-label未找到按钮，尝试通过SVG路径查找');
-          chrome.runtime.sendMessage({ action: "log", message: '【导航页面】通过aria-label未找到按钮，尝试通过SVG路径查找' });
-          
-          for (let i = 0; i < currentButtons.length; i++) {
-            const button = currentButtons[i] as HTMLElement;
-            const svg = button.querySelector('svg');
-            if (svg) {
-              const path = svg.querySelector('path');
-              if (path) {
-                const d = path.getAttribute('d');
-                const isLeftArrow = d && d.includes('14.7071 5.29289') && d.includes('7.29289 11.2929');
-                const isRightArrow = d && d.includes('9.29289 18.7071') && d.includes('16.7071 11.2929');
-                
-                if ((isLeftDirection && isLeftArrow) || (!isLeftDirection && isRightArrow)) {
-                  console.log('【导航页面】✓ 通过SVG路径找到按钮');
-                  chrome.runtime.sendMessage({ action: "log", message: '【导航页面】✓ 通过SVG路径找到按钮' });
-                  return button;
-                }
-              }
-            }
-          }
-          
-          // 方法3: 通过位置猜测
-          console.log('【导航页面】通过SVG路径未找到按钮，尝试通过位置猜测');
-          chrome.runtime.sendMessage({ action: "log", message: '【导航页面】通过SVG路径未找到按钮，尝试通过位置猜测' });
-          if (currentButtons.length >= 2) {
-            const index = isLeftDirection ? 0 : Math.min(2, currentButtons.length - 1);
-            console.log('【导航页面】✓ 通过位置猜测找到按钮，索引:', index);
-            chrome.runtime.sendMessage({ action: "log", message: `【导航页面】✓ 通过位置猜测找到按钮，索引: ${index}` });
-            return currentButtons[index] as HTMLElement;
-          }
-          
-          console.log('【导航页面】❌ 所有方法都未找到按钮');
-          chrome.runtime.sendMessage({ action: "log", message: '【导航页面】❌ 所有方法都未找到按钮' });
-          return null;
         };
 
         // 处理所有导航步骤
@@ -736,7 +669,15 @@ async function selectBranch(stepsToTake: any[]) {
               // 查找目标元素
               console.log('【导航页面】查找节点元素，ID:', step.nodeId);
               chrome.runtime.sendMessage({ action: "log", message: `【导航页面】查找节点元素，ID: ${step.nodeId}` });
-              const element = document.querySelector(`[data-message-id="${step.nodeId}"]`);
+              
+              // 首先尝试使用新的选择器查找元素
+              let element = document.querySelector(`article[data-message-id="${step.nodeId}"]`);
+              
+              // 如果新选择器没找到，尝试旧的选择器
+              if (!element) {
+                element = document.querySelector(`[data-message-id="${step.nodeId}"]`);
+              }
+              
               if (!element) {
                 console.error('【导航页面】❌ 未找到节点元素，ID:', step.nodeId);
                 chrome.runtime.sendMessage({ action: "log", message: `【导航页面】❌ 未找到节点元素，ID: ${step.nodeId}` });
@@ -746,7 +687,7 @@ async function selectBranch(stepsToTake: any[]) {
               chrome.runtime.sendMessage({ action: "log", message: '【导航页面】✓ 找到节点元素' });
               
               // 查找按钮容器
-              const buttonDiv = element.parentElement?.parentElement || null;
+              const buttonDiv = element.closest('article') || element.parentElement?.parentElement;
               if (!buttonDiv) {
                 console.error('【导航页面】❌ 未找到按钮容器');
                 chrome.runtime.sendMessage({ action: "log", message: '【导航页面】❌ 未找到按钮容器' });
@@ -755,73 +696,77 @@ async function selectBranch(stepsToTake: any[]) {
               console.log('【导航页面】✓ 找到按钮容器');
               chrome.runtime.sendMessage({ action: "log", message: '【导航页面】✓ 找到按钮容器' });
               
-              // 强制触发按钮显示
-              console.log('【导航页面】开始强制触发按钮显示');
-              chrome.runtime.sendMessage({ action: "log", message: '【导航页面】开始强制触发按钮显示' });
-              let buttonDisplaySuccess = false;
-              for (let attempt = 1; attempt <= 2; attempt++) { // 减少尝试次数
-                console.log(`【导航页面】尝试触发按钮显示 (尝试 ${attempt}/2)`);
-                chrome.runtime.sendMessage({ action: "log", message: `【导航页面】尝试触发按钮显示 (尝试 ${attempt}/2)` });
-                buttonDisplaySuccess = await triggerButtonsDisplay(element);
-                if (buttonDisplaySuccess) {
-                  console.log('【导航页面】✓ 按钮显示触发成功');
-                  chrome.runtime.sendMessage({ action: "log", message: '【导航页面】✓ 按钮显示触发成功' });
-                  break;
-                }
-                
-                if (attempt < 2) {
-                  console.log('【导航页面】❌ 按钮显示触发失败，等待后重试');
-                  chrome.runtime.sendMessage({ action: "log", message: '【导航页面】❌ 按钮显示触发失败，等待后重试' });
-                  await new Promise(resolve => setTimeout(resolve, 10)); // 减少等待时间
-                }
-              }
-              
-              if (!buttonDisplaySuccess) {
-                console.log('【导航页面】⚠️ 多次尝试后仍未能触发按钮显示，尝试继续执行');
-                chrome.runtime.sendMessage({ action: "log", message: '【导航页面】⚠️ 多次尝试后仍未能触发按钮显示，尝试继续执行' });
-              }
-              
               // 查找目标按钮
-              const targetButton = findNavigationButton(buttonDiv, step.stepsLeft > 0);
+              const targetLabel = step.stepsLeft > 0 ? "Previous response" : "Next response";
+              const buttons = Array.from(buttonDiv.querySelectorAll("button"));
+              const button = buttons.find(btn => 
+                btn.getAttribute('aria-label') === targetLabel ||
+                btn.getAttribute('aria-label') === (step.stepsLeft > 0 ? "上一回复" : "下一回复")
+              );
               
-              if (!targetButton) {
+              if (!button) {
                 console.error('【导航页面】❌ 未找到所需的按钮');
                 chrome.runtime.sendMessage({ action: "log", message: '【导航页面】❌ 未找到所需的按钮' });
-                throw new Error('未找到所需的按钮');
+                
+                // 尝试触发原生事件来显示按钮
+                console.log('【导航页面】尝试触发原生事件来显示按钮');
+                chrome.runtime.sendMessage({ action: "log", message: '【导航页面】尝试触发原生事件来显示按钮' });
+                
+                // 触发事件
+                const eventTypes = [
+                  'mouseover', 'mouseenter', 'mousemove', 'mousedown', 'mouseup', 'click',
+                  'pointerover', 'pointerenter', 'pointerdown', 'pointerup', 'pointermove'
+                ];
+                
+                for (const eventType of eventTypes) {
+                  try {
+                    const event = new MouseEvent(eventType, {
+                      bubbles: true,
+                      cancelable: true,
+                      view: window,
+                    });
+                    buttonDiv.dispatchEvent(event);
+                  } catch (err) {
+                    console.error(`触发${eventType}事件失败:`, err);
+                  }
+                }
+                
+                // 等待一段时间后再次尝试
+                await new Promise(resolve => setTimeout(resolve, 100));
+                
+                // 再次查找按钮
+                const buttonsRetry = Array.from(buttonDiv.querySelectorAll("button"));
+                const buttonRetry = buttonsRetry.find(btn => 
+                  btn.getAttribute('aria-label') === targetLabel ||
+                  btn.getAttribute('aria-label') === (step.stepsLeft > 0 ? "上一回复" : "下一回复")
+                );
+                
+                if (!buttonRetry) {
+                  throw new Error('在重试后仍未找到所需的按钮');
+                }
+                
+                // 点击找到的按钮
+                console.log('【导航页面】在重试后找到按钮，准备点击');
+                chrome.runtime.sendMessage({ action: "log", message: '【导航页面】在重试后找到按钮，准备点击' });
+                buttonRetry.click();
+              } else {
+                console.log('【导航页面】✓ 找到所需按钮，准备点击');
+                chrome.runtime.sendMessage({ action: "log", message: '【导航页面】✓ 找到所需按钮，准备点击' });
+                button.click();
               }
               
-              console.log('【导航页面】✓ 找到所需按钮，准备点击');
-              chrome.runtime.sendMessage({ action: "log", message: '【导航页面】✓ 找到所需按钮，准备点击' });
-              
-              // 点击按钮
-              try {
-                console.log('【导航页面】点击按钮');
-                chrome.runtime.sendMessage({ action: "log", message: '【导航页面】点击按钮' });
-                targetButton.click();
-                console.log('【导航页面】✓ 按钮点击成功');
-                chrome.runtime.sendMessage({ action: "log", message: '【导航页面】✓ 按钮点击成功' });
-              } catch (e) {
-                console.error('【导航页面】❌ 按钮点击失败:', e);
-                chrome.runtime.sendMessage({ action: "log", message: `【导航页面】❌ 按钮点击失败: ${e}` });
-                throw new Error('按钮点击失败');
-              }
+              console.log('【导航页面】✓ 按钮点击成功');
+              chrome.runtime.sendMessage({ action: "log", message: '【导航页面】✓ 按钮点击成功' });
               
               // 等待DOM变化
               console.log('【导航页面】等待DOM变化');
               chrome.runtime.sendMessage({ action: "log", message: '【导航页面】等待DOM变化' });
-              const domChanged = await waitForDomChange();
-              if (!domChanged) {
-                console.log('【导航页面】⚠️ 等待DOM变化超时，尝试继续执行');
-                chrome.runtime.sendMessage({ action: "log", message: '【导航页面】⚠️ 等待DOM变化超时，尝试继续执行' });
-              } else {
-                console.log('【导航页面】✓ DOM变化完成');
-                chrome.runtime.sendMessage({ action: "log", message: '【导航页面】✓ DOM变化完成' });
-              }
+              await waitForDomChange();
               
               // 等待页面稳定
-              console.log('【导航页面】等待页面稳定 (10ms)'); // 减少等待时间
-              chrome.runtime.sendMessage({ action: "log", message: '【导航页面】等待页面稳定 (10ms)' });
-              await new Promise(resolve => setTimeout(resolve, 10));
+              console.log('【导航页面】等待页面稳定 (50ms)');
+              chrome.runtime.sendMessage({ action: "log", message: '【导航页面】等待页面稳定 (50ms)' });
+              await new Promise(resolve => setTimeout(resolve, 50));
               
               // 检查URL是否变化
               const currentUrl = window.location.href;
@@ -834,7 +779,15 @@ async function selectBranch(stepsToTake: any[]) {
               if (stepIndex === stepsToTake.length - 1 && finalStepId) {
                 console.log('【导航页面】这是最后一步，验证目标节点是否可见');
                 chrome.runtime.sendMessage({ action: "log", message: '【导航页面】这是最后一步，验证目标节点是否可见' });
-                const finalElement = document.querySelector(`[data-message-id="${finalStepId}"]`);
+                
+                // 尝试新的选择器
+                let finalElement = document.querySelector(`article[data-message-id="${finalStepId}"]`);
+                
+                // 如果新选择器没找到，尝试旧的选择器
+                if (!finalElement) {
+                  finalElement = document.querySelector(`[data-message-id="${finalStepId}"]`);
+                }
+                
                 if (finalElement) {
                   console.log('【导航页面】✓ 最终目标节点可见');
                   chrome.runtime.sendMessage({ action: "log", message: '【导航页面】✓ 最终目标节点可见' });
@@ -843,11 +796,6 @@ async function selectBranch(stepsToTake: any[]) {
                   console.log('【导航页面】滚动到最终目标节点');
                   chrome.runtime.sendMessage({ action: "log", message: '【导航页面】滚动到最终目标节点' });
                   finalElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                  
-                  // 最后一次触发按钮显示
-                  console.log('【导航页面】最后一次触发按钮显示');
-                  chrome.runtime.sendMessage({ action: "log", message: '【导航页面】最后一次触发按钮显示' });
-                  await triggerButtonsDisplay(finalElement);
                 } else {
                   console.log('【导航页面】❌ 最终目标节点不可见，导航可能不完全成功');
                   chrome.runtime.sendMessage({ action: "log", message: '【导航页面】❌ 最终目标节点不可见，导航可能不完全成功' });
@@ -884,163 +832,47 @@ async function goToTarget(targetId: string) {
   console.log('【跳转】目标节点 ID:', targetId);
   
   try {
-  const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+    // 首先触发原生事件
+    await triggerNativeArticleEvents();
+    
+    const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
     console.log('【跳转】当前活动标签页:', tabs.length > 0 ? tabs[0].url : '无');
     
-  const currentTab = tabs[0];
+    const currentTab = tabs[0];
     if (!currentTab.id) {
       console.error('【跳转】❌ 当前标签页没有 ID');
       return;
     }
 
     console.log('【跳转】开始执行滚动脚本，标签页 ID:', currentTab.id);
-  await chrome.scripting.executeScript({
-    target: { tabId: currentTab.id ?? 0 },
-    func: (targetId) => {
+    await chrome.scripting.executeScript({
+      target: { tabId: currentTab.id ?? 0 },
+      func: (targetId) => {
         console.log('【跳转】页面滚动脚本开始执行，目标节点 ID:', targetId);
         chrome.runtime.sendMessage({ action: "log", message: `【跳转】页面滚动脚本开始执行，目标节点 ID: ${targetId}` });
         
-      const element = document.querySelector(`[data-message-id="${targetId}"]`);
+        // 首先尝试使用新的选择器查找元素
+        let element = document.querySelector(`article[data-message-id="${targetId}"]`);
+        
+        // 如果新选择器没找到，尝试旧的选择器
+        if (!element) {
+          element = document.querySelector(`[data-message-id="${targetId}"]`);
+        }
+        
         console.log('【跳转】查找目标元素结果:', element ? '✓ 找到' : '❌ 未找到');
         chrome.runtime.sendMessage({ action: "log", message: `【跳转】查找目标元素结果: ${element ? '✓ 找到' : '❌ 未找到'}` });
         
-      if (element) {
-          const tryTriggerButtons = async () => {
-            console.log('【跳转】开始尝试触发按钮显示');
-            chrome.runtime.sendMessage({ action: "log", message: '【跳转】开始尝试触发按钮显示' });
-            
-            for (let attempt = 1; attempt <= 5; attempt++) {
-              console.log(`【跳转】尝试触发按钮显示 (尝试 ${attempt}/5)`);
-              chrome.runtime.sendMessage({ action: "log", message: `【跳转】尝试触发按钮显示 (尝试 ${attempt}/5)` });
-              
-              // 直接调用triggerButtonsDisplay函数
-              const messageGroup = element.closest('.group\\/conversation-turn');
-              if (!messageGroup) {
-                console.log('【跳转】❌ 未找到消息组容器，无法触发按钮显示');
-                chrome.runtime.sendMessage({ action: "log", message: '【跳转】❌ 未找到消息组容器，无法触发按钮显示' });
-                return false;
-              }
-              
-              console.log('【跳转】✓ 找到消息组容器');
-              chrome.runtime.sendMessage({ action: "log", message: '【跳转】✓ 找到消息组容器' });
-              
-              // 记录初始按钮状态
-              const buttonContainer = messageGroup.querySelector('.mb-2.flex.gap-3, .flex.gap-3, .message-actions');
-              const initialButtonCount = buttonContainer?.querySelectorAll('button').length || 0;
-              console.log('【跳转】初始按钮数量:', initialButtonCount);
-              chrome.runtime.sendMessage({ action: "log", message: `【跳转】初始按钮数量: ${initialButtonCount}` });
-              
-              // 触发各种事件
-              console.log('【跳转】开始触发各种事件');
-              chrome.runtime.sendMessage({ action: "log", message: '【跳转】开始触发各种事件' });
-              
-              const events = [
-                new MouseEvent('mouseenter', { bubbles: true, cancelable: true, view: window }),
-                new MouseEvent('mouseover', { bubbles: true, cancelable: true, view: window }),
-                new MouseEvent('mousemove', { bubbles: true, cancelable: true, view: window }),
-                new FocusEvent('focus', { bubbles: true, cancelable: true }),
-                new MouseEvent('pointerover', { bubbles: true, cancelable: true, view: window }),
-                new MouseEvent('pointerenter', { bubbles: true, cancelable: true, view: window })
-              ];
-              
-              // 对消息组触发事件
-              events.forEach(event => {
-                messageGroup.dispatchEvent(event);
-              });
-              
-              // 对消息元素触发事件
-              events.forEach(event => {
-                element.dispatchEvent(event);
-              });
-              
-              // 对父元素触发事件
-              const parentElements = [
-                element.parentElement,
-                element.parentElement?.parentElement,
-                element.parentElement?.parentElement?.parentElement,
-                element.parentElement?.parentElement?.parentElement?.parentElement
-              ];
-              
-              parentElements.forEach(parent => {
-                if (parent) {
-                  events.forEach(event => {
-                    parent.dispatchEvent(event);
-                  });
-                }
-              });
-              
-              // 尝试点击消息元素
-              try {
-                console.log('【跳转】尝试点击消息元素');
-                chrome.runtime.sendMessage({ action: "log", message: '【跳转】尝试点击消息元素' });
-                (element as HTMLElement).click();
-              } catch (e) {
-                console.log('【跳转】点击消息元素失败:', e);
-                chrome.runtime.sendMessage({ action: "log", message: `【跳转】点击消息元素失败: ${e}` });
-              }
-              
-              // 检查按钮是否显示
-              await new Promise(resolve => setTimeout(resolve, 10));
-              
-              const selectors = [
-                '.mb-2.flex.gap-3', 
-                '.flex.gap-3', 
-                '.message-actions button',
-                '.message-header button',
-                '.flex.items-center button'
-              ];
-              
-              let updatedButtonCount = 0;
-              for (const selector of selectors) {
-                const container = messageGroup.querySelector(selector);
-                if (container) {
-                  const buttons = container.querySelectorAll('button');
-                  if (buttons.length > updatedButtonCount) {
-                    updatedButtonCount = buttons.length;
-                  }
-                }
-              }
-              
-              console.log('【跳转】触发后按钮数量:', updatedButtonCount);
-              chrome.runtime.sendMessage({ action: "log", message: `【跳转】触发后按钮数量: ${updatedButtonCount}` });
-              
-              const success = updatedButtonCount > initialButtonCount;
-              
-              if (success) {
-                console.log('【跳转】✓ 按钮显示触发成功');
-                chrome.runtime.sendMessage({ action: "log", message: '【跳转】✓ 按钮显示触发成功' });
-                return true;
-              }
-              
-              if (attempt < 5) {
-                console.log('【跳转】❌ 按钮显示触发失败，等待后重试');
-                chrome.runtime.sendMessage({ action: "log", message: '【跳转】❌ 按钮显示触发失败，等待后重试' });
-                await new Promise(resolve => setTimeout(resolve, 10));
-              }
-            }
-            
-            console.log('【跳转】❌ 多次尝试后仍未能触发按钮显示');
-            chrome.runtime.sendMessage({ action: "log", message: '【跳转】❌ 多次尝试后仍未能触发按钮显示' });
-            return false;
-          };
-          
-          // 修复await表达式错误
-          (async () => {
-            await tryTriggerButtons();
-            
-            console.log('【跳转】滚动到目标元素');
-            chrome.runtime.sendMessage({ action: "log", message: '【跳转】滚动到目标元素' });
-            
-            element.scrollIntoView({ behavior: 'smooth', block: 'center' });
-            console.log('【跳转】✓ 滚动完成');
-            chrome.runtime.sendMessage({ action: "log", message: '【跳转】✓ 滚动完成' });
-          })();
+        if (element) {
+          // 滚动到元素
+          element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          console.log('【跳转】✓ 滚动完成');
+          chrome.runtime.sendMessage({ action: "log", message: '【跳转】✓ 滚动完成' });
         } else {
           console.log('【跳转】❌ 未找到目标元素，无法滚动');
           chrome.runtime.sendMessage({ action: "log", message: '【跳转】❌ 未找到目标元素，无法滚动' });
-      }
-    },
-    args: [targetId]
+        }
+      },
+      args: [targetId]
     });
     
     console.log('【跳转】✓ 滚动脚本执行成功');
@@ -1066,6 +898,11 @@ chrome.tabs.onUpdated.addListener(async (tabId, _info, tab) => {
         path: 'index.html',
         enabled: true
       });
+      
+      // 页面加载或更新时触发原生事件
+      setTimeout(() => {
+        triggerNativeArticleEvents();
+      }, 1500);
     } else {
       await chrome.sidePanel.setOptions({
         tabId,
@@ -1088,6 +925,11 @@ chrome.tabs.onActivated.addListener(async (activeInfo) => {
       path: 'index.html',
       enabled: true
     });
+    
+    // 切换到ChatGPT标签页时触发原生事件
+    setTimeout(() => {
+      triggerNativeArticleEvents();
+    }, 500);
   } else {
     await chrome.sidePanel.setOptions({
       tabId: activeInfo.tabId,
@@ -1102,6 +944,11 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
     chrome.tabs.sendMessage(tabId, { action: "urlChanged", url: tab.url }).catch(err => {
       console.log('Error sending message to content script:', err);
     });
+    
+    // URL变化时触发原生事件
+    setTimeout(() => {
+      triggerNativeArticleEvents();
+    }, 1000);
   }
 });
 
@@ -1111,6 +958,11 @@ chrome.webNavigation.onHistoryStateUpdated.addListener((details) => {
     chrome.tabs.sendMessage(details.tabId, { action: "urlChanged", url: details.url }).catch(err => {
       console.log('Error sending message to content script:', err);
     });
+    
+    // 历史状态更新时触发原生事件
+    setTimeout(() => {
+      triggerNativeArticleEvents();
+    }, 1000);
   }
 });
 

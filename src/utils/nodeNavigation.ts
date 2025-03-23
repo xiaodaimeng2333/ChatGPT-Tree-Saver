@@ -64,13 +64,25 @@ export const calculateSteps = (nodes: Node[], targetId: string) => {
         
         console.log('【调试】需要移动方向:', moveRight ? '向右' : '向左', '步数:', steps);
 
+        // 使用临时数组存储步骤，然后倒序添加
+        let tempStepsToTake = [];
         for (let i = 0; i < steps; i++) {
-          stepsToTake.push({
-            nodeId: parent.children[activeChildIndex],
+          let tempActiveChildIndex = activeChildIndex;
+          if (moveRight) {
+            tempActiveChildIndex = activeChildIndex + i;
+          } else {
+            tempActiveChildIndex = activeChildIndex - i;
+          }
+          
+          tempStepsToTake.push({
+            nodeId: parent.children[tempActiveChildIndex],
             stepsLeft: moveRight ? -1 : 1,
             stepsRight: moveRight ? 1 : -1,
           });
         }
+        
+        // 这些步骤已经是正确的顺序，但由于我们会在最后倒序所有步骤，需要预先将这些步骤倒序
+        stepsToTake.push(...tempStepsToTake.reverse());
         
         console.log('【调试】添加了', steps, '个导航步骤');
       }

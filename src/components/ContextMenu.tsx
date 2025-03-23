@@ -103,6 +103,9 @@ export const ContextMenu = (props: ContextMenuProps) => {
         }
 
         try {
+            // 触发原生事件以确保按钮可见
+            await chrome.runtime.sendMessage({ action: "triggerNativeEvents" });
+            
             // 执行导航步骤
             console.log('【导航】开始执行导航步骤，总步数:', steps.length);
             
@@ -121,15 +124,15 @@ export const ContextMenu = (props: ContextMenuProps) => {
             
             // 等待DOM更新
             console.log('【导航】等待DOM更新 (10ms)');
-            await new Promise(resolve => setTimeout(resolve, 10));
+            await new Promise(resolve => setTimeout(resolve, 50));
             
             // 刷新节点状态
             console.log('【导航】刷新节点状态');
             props.onRefresh();
             
             // 等待节点状态更新
-            console.log('【导航】等待节点状态更新 (10ms)');
-            await new Promise(resolve => setTimeout(resolve, 10));
+            console.log('【导航】等待节点状态更新 (50ms)');
+            await new Promise(resolve => setTimeout(resolve, 50));
             
             // 验证导航是否成功
             console.log('【导航】验证导航是否成功');
